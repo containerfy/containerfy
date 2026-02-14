@@ -78,24 +78,32 @@ The same compiled `.app` binary is used for every appliance. It reads `docker-co
 |---|---|
 | Framework | AppKit `NSStatusItem` |
 | Min target | macOS 14.0 (VM pause/resume, stable vsock, Virtualization.framework maturity) |
-| Entitlements | `com.apple.security.virtualization` |
+| Entitlements | `com.apple.security.virtualization`, `com.apple.security.hypervisor` |
+| Hardened Runtime | Required — `--options runtime` for notarized builds |
 | Sandbox | No — Virtualization.framework requires unsandboxed execution |
 | Distribution | Signed `.app` in `.dmg`, notarized via `apppod pack`, not App Store |
 
 **State machine:**
 
 ```
-Stopped → ValidatingHost → InsufficientResources
+Stopped → ValidatingHost → InsufficientResources → Stopped (retry/quit)
                          → StartingVM → WaitingForHealth → Running
-                                                         → Error
+                                      → Error
+                         → WaitingForHealth → Stopping → Stopped
+                                            → Error
 Running → Stopping → Stopped
-Running → Error → StartingVM (restart)
+Running → Error → StartingVM (auto-restart)
+                → Stopped (user stop)
+Error → Stopped (user stop)
+Any state → Stopped (quit — Quit always means Stop+Exit)
 ```
+
+All transitions are `@MainActor`-isolated. `VZVirtualMachineDelegate` callbacks dispatch to `@MainActor` before touching state. Transitions are guarded: "if current state is X, move to Y; otherwise ignore and log."
 
 **Menu bar renders dynamically from compose file:**
 - Status icon reflects current state
 - "Open" items auto-generated from services with `ports:` — service name becomes the label (title-cased, hyphens → spaces), first host port becomes the URL
-- Restart / Stop / View Logs / Preferences / Quit
+- Restart / Stop / View Logs / Preferences / Quit (Quit = Stop VM + exit)
 
 **VM lifecycle manager** wraps `VZVirtualMachine`:
 - Creates VM config from `x-apppod` block (CPU, memory, disks, vsock, NAT)
@@ -103,6 +111,8 @@ Running → Error → StartingVM (restart)
 - Subsequent launches: reuses existing disk images
 - Graceful shutdown: vsock SHUTDOWN → ACPI poweroff → force kill after timeout
 - `VZVirtualMachine` must operate on main thread — all VM ops are `@MainActor`-isolated
+- `VZVirtualMachineDelegate` callbacks fire on arbitrary queues — always dispatch to `@MainActor` before state mutation
+- Disk I/O (lz4 decompression, image creation) runs on background Tasks — never block main thread
 
 **Host validator** runs before VM creation — pure function, no side effects:
 - Hard fail: insufficient memory, disk, wrong arch, old macOS, no VZ support
@@ -113,6 +123,9 @@ Running → Error → StartingVM (restart)
 - Binds `127.0.0.1:<port>` on host for each compose `ports:` mapping
 - Tunnels TCP traffic through vsock to the VM agent's socat bridges
 - Test-binds ports before starting; errors with "Port X already in use" if occupied
+- TCP only — UDP port mappings in compose are warned at pack time (vsock is stream-oriented)
+- Port conflict detection: test-bind before forwarding, hard error with "Port X already in use by <process>"
+- After sleep/wake resume: tear down and rebuild all vsock data connections
 
 **Health monitor:**
 - HTTP GET polling through the port forwarder to the developer-defined health URL
@@ -157,12 +170,14 @@ MyApp.app/Contents/
 ├── MacOS/AppPod              # Generic Swift binary (same for all appliances)
 ├── Resources/
 │   ├── docker-compose.yml    # Compose file (includes x-apppod config)
+│   ├── *.env                 # Any env files referenced by env_file: (if present)
 │   ├── vmlinuz-lts           # Linux kernel
 │   ├── initramfs-lts         # Initramfs
 │   └── vm-root.img.lz4      # Compressed root disk with preloaded images
-├── Info.plist
-└── Entitlements.plist
+└── Info.plist
 ```
+
+Entitlements are embedded in the code signature at build time, not shipped as a file.
 
 ### CLI Reference
 
@@ -190,24 +205,39 @@ Alpine Linux (aarch64), minimal, with Docker Engine and preloaded container imag
 
 Docker's `data-root` is configured to `/data/docker` (on the data disk), so all mutable state — volumes, containers, layers — lives on the persistent partition.
 
-**VM agent** is a small shell script + socat:
+**Docker daemon config** (`/etc/docker/daemon.json` on root disk):
+```json
+{
+  "data-root": "/data/docker",
+  "storage-driver": "overlay2",
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" },
+  "live-restore": false
+}
+```
+Log rotation prevents unbounded growth on the data partition. `live-restore: false` ensures containers stop if dockerd crashes (agent detects and reports failure).
+
+**VM agent** is a small shell script + socat, managed by OpenRC:
 - Listens on vsock port 1024 for control commands (line-based text protocol)
-- Runs socat bridges: vsock data ports ↔ container TCP ports
+- Runs socat bridges: vsock data ports ↔ container TCP ports (wrapped in respawn loops — restart on crash)
 - Reports readiness ("READY" handshake) after dockerd and services are up
+- Agent itself runs as an OpenRC service with `respawn` — not a bare `&` background process
 
 **Control protocol** (vsock port 1024):
 ```
 → HEALTH          ← OK|FAIL:<reason>
 → DISK            ← DISK:<used_mb>/<total_mb>
-→ LOGS:<lines>    ← <log data>\nEND
+→ LOGS:<lines>    ← LOGS:<byte_count>\n<log data>
 → SHUTDOWN        ← ACK
 ```
 
-**Boot sequence inside VM** (OpenRC):
+**Boot sequence inside VM** (OpenRC dependency chain):
 1. Mount root and data partitions, fsck
-2. Start dockerd
+2. Start dockerd (wait for `docker info` to succeed)
 3. Start VM agent (vsock listener + socat bridges)
 4. `docker compose up -d` (images already loaded, no pull)
+
+OpenRC dependency chain: `mount /data` → `dockerd` → `vm-agent` (which runs `docker compose up -d` after verifying `docker info` succeeds).
 
 ---
 
@@ -325,12 +355,12 @@ x-apppod:
 
 | Field | Constraint |
 |---|---|
-| `name` | `^[a-zA-Z0-9-]{1,64}$` |
+| `name` | `^[a-zA-Z][a-zA-Z0-9-]{0,63}$` (leading alpha required) |
 | `version` | Valid semver |
 | `cpu.min` | 1-16, `recommended` >= `min` |
 | `memory_mb.min` | 512-32768, `recommended` >= `min` |
 | `disk_mb` | >= 1024 |
-| `healthcheck.url` | Valid HTTP URL, host must be `127.0.0.1` |
+| `healthcheck.url` | Valid HTTP URL, host must be `127.0.0.1`, port must match a host port in some service's `ports:` mapping |
 | At least one service | Must have `ports:` (otherwise nothing to expose) |
 
 **Resource allocation at runtime:**
@@ -350,6 +380,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | `services[*].image` | Preload images as `.tar` files into the root disk at build time (no pull at runtime) |
 | `services[*].ports` | Set up vsock↔TCP port forwarding on the host; generate menu items |
 | Top-level `volumes` | Provision named volumes on the persistent data disk |
+| `services[*].env_file` | Bundle referenced `.env` files into root image alongside compose file |
 
 **Hard-rejected keywords** (caught by `apppod pack` at build time):
 
@@ -359,6 +390,8 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | Bind mount volumes (e.g. `./data:/app/data`) | Host paths don't exist inside the VM. Named volumes only. |
 | `extends:` | Requires resolving external files that may not be bundled. |
 | `profiles:` | All services in the file are always started. No partial-stack support in v1. |
+| `network_mode: host` | Service binds to VM network, invisible to vsock port forwarder. Breaks silently. |
+| `env_file:` without bundled files | References must resolve inside VM. `apppod pack` bundles referenced env files automatically; rejects if file not found. |
 
 **Everything else passes through** — `command`, `entrypoint`, `depends_on`, `restart`, `networks`, `configs`, `secrets`, `labels`, `healthcheck`, `deploy`, `logging`, `cap_add`, `privileged`, `user`, `working_dir`, `stdin_open`, `tty`, etc. If Docker Compose supports it, it works.
 
@@ -440,3 +473,6 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | **Sleep/wake** | Bumped min macOS to 14; use native `VZVirtualMachine.pause()`/`resume()` | Eliminates vsock reconnection uncertainty. Clean suspend/resume. macOS 13 isn't worth the workarounds. |
 | **Volume disk growth** | Alert user at threshold (~90%); no auto-resize | VM agent monitors disk usage and reports via control protocol. Menu bar shows warning. No runtime resize complexity. Developer sets `disk_mb` conservatively. |
 | **Log streaming** | Batch-fetch only in v1 (`LOGS:<lines>` → response) | Logs window shows recent lines, refreshes on demand or timer. Real-time tailing deferred to v2. |
+| **Quit vs Stop** | Quit = Stop VM + exit process | Simpler model. No "app running with VM stopped" state. Fewer states to manage. |
+| **`env_file:` handling** | `apppod pack` bundles referenced env files into root image | Common in real-world compose files. Silent runtime failure if missing. Reject at pack time if file not found. |
+| **Control protocol scope** | Minimal for v1: HEALTH, DISK, LOGS, SHUTDOWN only | Add VERSION/STATUS/RESTART in v2 if needed. Avoids speculative complexity. |
