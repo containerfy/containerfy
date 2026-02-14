@@ -1,0 +1,23 @@
+# Swift / SPM
+.build/
+.swiftpm/
+Package.resolved
+*.xcodeproj
+xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store
+
+# VM image artifacts
+*.img
+*.img.lz4
+vmlinuz-*
+initramfs-*
+
+# Go
+cli/bin/
+
+# IDE
+.vscode/
+.idea/
