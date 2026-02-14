@@ -109,28 +109,7 @@ func runPack(args []string) error {
 }
 
 // runBuildImage is the legacy Phase 0 build-image command.
-func runBuildImage(args []string) error {
-	outputDir := defaultOutputDir()
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--output" && i+1 < len(args) {
-			outputDir = args[i+1]
-			i++
-		}
-	}
-
-	fmt.Println("[1/4] Checking Docker...")
-	if err := builder.CheckDocker(); err != nil {
-		return err
-	}
-
+func runBuildImage(_ []string) error {
 	fmt.Println("Note: 'build-image' is deprecated. Use 'apppod pack' instead.")
 	return nil
-}
-
-func defaultOutputDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "."
-	}
-	return home + "/Library/Application Support/AppPod"
 }

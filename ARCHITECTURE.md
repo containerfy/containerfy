@@ -146,10 +146,9 @@ apppod pack \
 
 What it does:
 1. Parses `docker-compose.yml` — validates `x-apppod` block, rejects hard-rejected keywords (see Compose Passthrough Model)
-2. Pulls all referenced images (`docker pull`) and saves them as `.tar` files (`docker save`)
-3. Runs a builder container that creates an ext4 root image: Alpine base + Docker Engine + preloaded images + compose file + VM agent scripts
-4. Extracts kernel + initramfs from the root image (VZLinuxBootLoader needs them as separate host files)
-5. Compresses root image with lz4
+2. Runs a privileged builder container that creates an ext4 root image: bootstraps Alpine, starts dockerd inside (Docker-in-Docker) to pull all referenced images directly into the filesystem, installs VM agent + OpenRC services + compose file
+3. Shrinks the filesystem (`resize2fs -M`) and compresses with lz4
+4. Extracts kernel + initramfs (VZLinuxBootLoader needs them as separate host files)
 6. Copies the prebuilt AppPod.app template and injects all resources
 7. Interactive signing and packaging:
    - Lists available signing identities (`security find-identity`)
@@ -377,7 +376,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 
 | Field | Why AppPod reads it |
 |---|---|
-| `services[*].image` | Preload images as `.tar` files into the root disk at build time (no pull at runtime) |
+| `services[*].image` | Preload images into root disk at build time via Docker-in-Docker (no pull at runtime) |
 | `services[*].ports` | Set up vsock↔TCP port forwarding on the host; generate menu items |
 | Top-level `volumes` | Provision named volumes on the persistent data disk |
 | `services[*].env_file` | Bundle referenced `.env` files into root image alongside compose file |

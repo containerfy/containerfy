@@ -50,12 +50,11 @@ Full dynamic menu bar driven by the compose file.
 Developer-facing CLI that produces a distributable `.app` bundle.
 
 - [x] Compose parser: validate `x-apppod`, reject hard-rejected keywords
-- [x] Image pull + save (`docker pull` / `docker save`)
-- [x] Builder container Dockerfile (Alpine arm64 + e2fsprogs + docker)
+- [x] Builder container Dockerfile (Alpine arm64 + Docker-in-Docker)
 - [x] ext4 creation script: Alpine bootstrap + Docker Engine + packages
-- [x] Image preloading (tar copy into root image, `docker load` at first boot via OpenRC)
+- [x] Image preloading via Docker-in-Docker (pull directly into root filesystem)
 - [x] VM agent scripts + OpenRC service files
-- [x] Dynamic image sizing (base + image tars + 25% headroom)
+- [x] Sparse image + `resize2fs -M` auto-sizing
 - [x] Kernel/initramfs extraction + virtio module verification
 - [x] lz4 compression
 - [x] .app bundle assembly

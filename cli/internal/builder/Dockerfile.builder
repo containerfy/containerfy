@@ -16,13 +16,12 @@ set -e
 
 OUTPUT=/output
 IMG=$OUTPUT/vm-root.img
-IMG_SIZE_MB=${IMG_SIZE_MB:-2048}
 
 mkdir -p $OUTPUT
 
-# Create ext4 image with dynamic size
-echo "Creating ext4 image (${IMG_SIZE_MB}MB)..."
-dd if=/dev/zero of=$IMG bs=1M count=$IMG_SIZE_MB
+# Create sparse ext4 image (16GB virtual, actual usage grows as needed)
+echo "Creating ext4 image..."
+truncate -s 16G $IMG
 mkfs.ext4 -F $IMG
 
 # Mount and populate
@@ -53,7 +52,7 @@ auto eth0
 iface eth0 inet dhcp
 EOF
 
-# Configure Docker daemon
+# Configure Docker daemon (runtime uses /data/docker on persistent data disk)
 mkdir -p $MOUNT/etc/docker
 cat > $MOUNT/etc/docker/daemon.json <<'EOF'
 {
@@ -68,6 +67,41 @@ EOF
 # Enable services
 chroot $MOUNT rc-update add networking default
 chroot $MOUNT rc-update add docker default
+
+# Pull container images directly into root filesystem via Docker-in-Docker
+if [ -n "$APPPOD_IMAGES" ]; then
+    echo "Starting Docker daemon for image preloading..."
+    dockerd \
+        --data-root $MOUNT/var/lib/docker \
+        --host unix:///tmp/build-docker.sock \
+        --pidfile /tmp/build-docker.pid \
+        --iptables=false \
+        --bridge=none \
+        >/tmp/dockerd.log 2>&1 &
+
+    echo "Waiting for Docker daemon..."
+    for i in $(seq 1 30); do
+        if DOCKER_HOST=unix:///tmp/build-docker.sock docker info >/dev/null 2>&1; then
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "Docker daemon failed to start:"
+            cat /tmp/dockerd.log
+            exit 1
+        fi
+        sleep 1
+    done
+
+    for image in $APPPOD_IMAGES; do
+        echo "Pulling $image..."
+        DOCKER_HOST=unix:///tmp/build-docker.sock docker pull --platform linux/arm64 "$image"
+    done
+
+    # Stop dockerd cleanly
+    kill $(cat /tmp/build-docker.pid) 2>/dev/null
+    wait 2>/dev/null
+    echo "Image preloading complete."
+fi
 
 # Install vm-agent scripts
 mkdir -p $MOUNT/usr/local/bin
@@ -157,37 +191,47 @@ SERVICE
 chmod +x $MOUNT/etc/init.d/vm-agent
 chroot $MOUNT rc-update add vm-agent default
 
-# Create OpenRC service for compose services (image loading + compose up)
+# Create OpenRC service to seed Docker data on first boot
+cat > $MOUNT/etc/init.d/apppod-seed <<'SEEDRC'
+#!/sbin/openrc-run
+
+description="Seed Docker data from preloaded images"
+
+depend() {
+    after data-disk
+    before docker
+}
+
+start() {
+    # Copy preloaded images to data disk on first boot
+    if [ -d /var/lib/docker/overlay2 ] && [ ! -d /data/docker ]; then
+        ebegin "Seeding Docker with preloaded images"
+        cp -a /var/lib/docker /data/docker
+        eend $?
+    else
+        eend 0
+    fi
+}
+SEEDRC
+chmod +x $MOUNT/etc/init.d/apppod-seed
+chroot $MOUNT rc-update add apppod-seed default
+
+# Create OpenRC service for compose services
 cat > $MOUNT/etc/init.d/apppod-compose <<'COMPOSERC'
 #!/sbin/openrc-run
 
-description="Load preloaded images and start compose services"
+description="Start compose services"
 
 depend() {
     need docker
-    after data-disk
+    after docker
 }
 
 start() {
     ebegin "Starting compose services"
-
-    # Load preloaded images on first boot (or after root image update)
-    if [ -d /var/cache/apppod/images ] && [ ! -f /data/.images-loaded ]; then
-        einfo "Loading preloaded container images..."
-        for tar in /var/cache/apppod/images/*.tar; do
-            [ -f "$tar" ] || continue
-            einfo "  Loading $(basename "$tar")..."
-            docker load -i "$tar" 2>/dev/null
-        done
-        mkdir -p /data
-        touch /data/.images-loaded
-    fi
-
-    # Start compose services
     if [ -f /etc/apppod/docker-compose.yml ]; then
         docker compose -f /etc/apppod/docker-compose.yml up -d
     fi
-
     eend $?
 }
 
@@ -221,6 +265,7 @@ depend() {
     before docker
     before vm-agent
     before apppod-compose
+    before apppod-seed
 }
 
 start() {
@@ -254,30 +299,27 @@ DATADISK
 chmod +x $MOUNT/etc/init.d/data-disk
 chroot $MOUNT rc-update add data-disk default
 
-# Copy compose file and env files from workspace (if mounted)
+# Copy compose file and env files from workspace
 if [ -d /workspace ]; then
     mkdir -p $MOUNT/etc/apppod
     if [ -f /workspace/docker-compose.yml ]; then
         cp /workspace/docker-compose.yml $MOUNT/etc/apppod/
         echo "Installed docker-compose.yml"
     fi
-    # Copy any .env files
     for envfile in /workspace/*.env; do
         [ -f "$envfile" ] || continue
         cp "$envfile" $MOUNT/etc/apppod/
         echo "Installed $(basename "$envfile")"
     done
-
-    # Copy preloaded image tars
-    if [ -d /workspace/images ] && [ "$(ls /workspace/images/*.tar 2>/dev/null)" ]; then
-        mkdir -p $MOUNT/var/cache/apppod/images
-        cp /workspace/images/*.tar $MOUNT/var/cache/apppod/images/
-        echo "Installed $(ls /workspace/images/*.tar | wc -l) image tar(s)"
-    fi
 fi
 
 # Clean up
 umount $MOUNT
+
+# Shrink filesystem to minimum size
+echo "Shrinking filesystem..."
+e2fsck -f -y $IMG
+resize2fs -M $IMG
 
 # Copy kernel and initramfs
 cp /boot/vmlinuz-lts $OUTPUT/vmlinuz-lts
