@@ -4,16 +4,16 @@ Each phase is a shippable checkpoint. Phases 0-3 are sequential (Swift app). Pha
 
 ---
 
-## Phase 0 — Skeleton
+## Phase 0 — Skeleton ✅
 
 Get something running end-to-end. Proof that the architecture works.
 
-- [ ] Swift menu bar app: empty shell with status icon, state machine, quit
-- [ ] Hardcoded VM boot: Alpine + Docker from a manually-built root image
-- [ ] vsock control channel: HEALTH handshake
-- [ ] Proof-of-life: app boots VM, gets READY, shows "Running"
+- [x] Swift menu bar app: empty shell with status icon, state machine, quit
+- [x] Hardcoded VM boot: Alpine + Docker from a manually-built root image
+- [x] vsock control channel: HEALTH handshake
+- [x] Proof-of-life: app boots VM, gets READY, shows "Running"
 
-## Phase 1 — Core VM Lifecycle
+## Phase 1 — Core VM Lifecycle ← **next**
 
 Full VM lifecycle management and host validation.
 
@@ -51,17 +51,17 @@ Developer-facing CLI that produces a distributable `.app` bundle.
 
 - [ ] Compose parser: validate `x-apppod`, reject hard-rejected keywords
 - [ ] Image pull + save (`docker pull` / `docker save`)
-- [ ] Builder container Dockerfile (Alpine arm64 + e2fsprogs + docker)
-- [ ] ext4 creation script: Alpine bootstrap + Docker Engine + packages
+- [x] Builder container Dockerfile (Alpine arm64 + e2fsprogs + docker)
+- [x] ext4 creation script: Alpine bootstrap + Docker Engine + packages
 - [ ] Docker-in-Docker image preloading (privileged builder, `docker load`)
-- [ ] VM agent scripts + OpenRC service files
+- [x] VM agent scripts + OpenRC service files
 - [ ] Dynamic image sizing (base + image tars + 25% headroom)
 - [ ] Kernel/initramfs extraction + virtio module verification
 - [ ] lz4 compression
 - [ ] .app bundle assembly
 - [ ] CLI reference flags: `--compose`, `--output`, `--unsigned`
 - [ ] `env_file:` bundling (detect references, copy files, reject if missing)
-- [ ] Docker availability check (`docker info`) before any work
+- [x] Docker availability check (`docker info`) before any work
 - [ ] `--platform linux/arm64` pinned on all `docker pull` invocations
 - [ ] Healthcheck URL port cross-validation against service ports
 - [ ] `Info.plist` generation (CFBundleIdentifier, CFBundleName, LSUIElement, etc.)
@@ -90,3 +90,11 @@ Production readiness and end-to-end validation.
 - [ ] Crash recovery (detect stale state file, offer reset)
 - [ ] Memory pressure / OOM handling
 - [ ] End-to-end test: `apppod pack` → launch → health → open → stop
+
+---
+
+## Recommended Next Steps
+
+**Phase 1 (Core VM Lifecycle)** is the natural next phase — it builds directly on the Phase 0 skeleton with dual-disk model, lz4 decompression, sleep/wake, graceful shutdown, host validation, and crash recovery.
+
+**Phase 4 (Go CLI)** can proceed in parallel since its foundation (builder Dockerfile, ext4 script, VM agent, Docker check) is already in place from Phase 0.
