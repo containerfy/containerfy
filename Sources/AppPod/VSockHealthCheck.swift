@@ -31,8 +31,8 @@ final class VSockHealthCheck {
                     return
                 }
 
-                let healthy = await Self.checkHealth(device: device)
-                if healthy {
+                let response = await VSockControl.send(command: "HEALTH", to: device, timeout: 5.0)
+                if response == "OK" {
                     await self?.handleHealthy()
                     return
                 }
@@ -49,35 +49,12 @@ final class VSockHealthCheck {
 
     private func handleTimeout() {
         print("[Health] Startup timeout (\(startupTimeout)s) exceeded")
-        stateController.transition(to: .error)
+        stateController.transition(to: .error, reason: "Health check timeout after \(Int(startupTimeout))s")
     }
 
     private func handleHealthy() {
         print("[Health] VM is healthy")
         stateController.transition(to: .running)
         stop()
-    }
-
-    private static func checkHealth(device: VZVirtioSocketDevice) async -> Bool {
-        do {
-            let connection = try await device.connect(toPort: 1024)
-            let input = connection.fileHandleForReading
-            let output = connection.fileHandleForWriting
-
-            let command = "HEALTH\n"
-            output.write(command.data(using: .utf8)!)
-
-            let data = input.availableData
-            let response = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            try? input.close()
-            try? output.close()
-
-            return response == "OK"
-        } catch {
-            print("[Health] Poll failed: \(error.localizedDescription)")
-            return false
-        }
     }
 }

@@ -13,17 +13,17 @@ Get something running end-to-end. Proof that the architecture works.
 - [x] vsock control channel: HEALTH handshake
 - [x] Proof-of-life: app boots VM, gets READY, shows "Running"
 
-## Phase 1 — Core VM Lifecycle ← **next**
+## Phase 1 — Core VM Lifecycle ✅
 
 Full VM lifecycle management and host validation.
 
-- [ ] VM lifecycle manager: create, start, stop, restart, destroy
-- [ ] Dual-disk model: root + data partition handling
-- [ ] First-launch decompression (lz4)
-- [ ] Sleep/wake: pause/resume (macOS 14)
-- [ ] Host validation (hard fail + soft warn)
-- [ ] Graceful shutdown: vsock SHUTDOWN → `docker compose down` → ACPI poweroff → force kill
-- [ ] State persistence file for crash recovery (`state.json` in Application Support)
+- [x] VM lifecycle manager: create, start, stop, restart, destroy
+- [x] Dual-disk model: root + data partition handling
+- [x] First-launch decompression (lz4)
+- [x] Sleep/wake: pause/resume (macOS 14)
+- [x] Host validation (hard fail + soft warn)
+- [x] Graceful shutdown: vsock SHUTDOWN → `docker compose down` → ACPI poweroff → force kill
+- [x] State persistence file for crash recovery (`state.json` in Application Support)
 
 ## Phase 2 — Port Forwarding + Health
 
@@ -95,6 +95,6 @@ Production readiness and end-to-end validation.
 
 ## Recommended Next Steps
 
-**Phase 1 (Core VM Lifecycle)** is the natural next phase — it builds directly on the Phase 0 skeleton with dual-disk model, lz4 decompression, sleep/wake, graceful shutdown, host validation, and crash recovery.
+**Phase 2 (Port Forwarding + Health)** is the natural next phase — it makes containers reachable from the host and adds health monitoring with auto-restart.
 
 **Phase 4 (Go CLI)** can proceed in parallel since its foundation (builder Dockerfile, ext4 script, VM agent, Docker check) is already in place from Phase 0.

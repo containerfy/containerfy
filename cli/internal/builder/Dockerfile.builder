@@ -81,7 +81,13 @@ while IFS= read -r line; do
     cmd=$(printf '%s' "$line" | tr -d '\r')
     case "$cmd" in
         HEALTH)  printf 'OK\n' ;;
-        SHUTDOWN) printf 'ACK\n'; poweroff ;;
+        SHUTDOWN)
+            printf 'ACK\n'
+            if [ -f /data/docker-compose.yml ]; then
+                docker compose -f /data/docker-compose.yml down --timeout 15 2>/dev/null
+            fi
+            poweroff
+            ;;
         *)       printf 'ERR:unknown-command\n' ;;
     esac
 done
@@ -107,14 +113,56 @@ SERVICE
 chmod +x $MOUNT/etc/init.d/vm-agent
 chroot $MOUNT rc-update add vm-agent default
 
-# Configure fstab
+# Configure fstab (nofail on /dev/vdb prevents boot hang if data disk missing)
 cat > $MOUNT/etc/fstab <<'EOF'
-/dev/vda    /       ext4    defaults,noatime    0 1
-/dev/vdb    /data   ext4    defaults,noatime    0 2
+/dev/vda    /       ext4    defaults,noatime        0 1
+/dev/vdb    /data   ext4    defaults,noatime,nofail 0 2
 EOF
 
 # Create data mount point
 mkdir -p $MOUNT/data
+
+# Create OpenRC service for data-disk: formats /dev/vdb on first boot, then mounts
+cat > $MOUNT/etc/init.d/data-disk <<'DATADISK'
+#!/sbin/openrc-run
+
+description="Format and mount data disk (/dev/vdb)"
+
+depend() {
+    before docker
+    before vm-agent
+}
+
+start() {
+    ebegin "Preparing data disk"
+    if [ ! -b /dev/vdb ]; then
+        ewarn "/dev/vdb not found, skipping data disk"
+        eend 0
+        return 0
+    fi
+
+    # Format if unformatted (no filesystem detected)
+    if ! blkid /dev/vdb >/dev/null 2>&1; then
+        einfo "Formatting /dev/vdb as ext4..."
+        mkfs.ext4 -F /dev/vdb || { eend 1; return 1; }
+    fi
+
+    # Mount if not already mounted
+    if ! mountpoint -q /data; then
+        mkdir -p /data
+        mount /dev/vdb /data || { eend 1; return 1; }
+    fi
+    eend 0
+}
+
+stop() {
+    ebegin "Unmounting data disk"
+    umount /data 2>/dev/null
+    eend 0
+}
+DATADISK
+chmod +x $MOUNT/etc/init.d/data-disk
+chroot $MOUNT rc-update add data-disk default
 
 # Clean up
 umount $MOUNT

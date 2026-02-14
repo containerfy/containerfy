@@ -12,6 +12,10 @@ while IFS= read -r line; do
             ;;
         SHUTDOWN)
             printf 'ACK\n'
+            # Stop compose services gracefully before powering off
+            if [ -f /data/docker-compose.yml ]; then
+                docker compose -f /data/docker-compose.yml down --timeout 15 2>/dev/null
+            fi
             poweroff
             ;;
         *)

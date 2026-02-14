@@ -18,6 +18,18 @@ enum Paths {
         applicationSupport.appendingPathComponent("vm-root.img")
     }
 
+    static var dataDiskURL: URL {
+        applicationSupport.appendingPathComponent("vm-data.img")
+    }
+
+    static var stateFileURL: URL {
+        applicationSupport.appendingPathComponent("state.json")
+    }
+
+    static var compressedRootDiskURL: URL? {
+        Bundle.main.url(forResource: "vm-root.img", withExtension: "lz4")
+    }
+
     static func ensureDirectoryExists() throws {
         try FileManager.default.createDirectory(
             at: applicationSupport,

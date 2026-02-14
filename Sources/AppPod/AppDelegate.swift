@@ -4,15 +4,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var stateController: VMStateController!
     private var menuBarController: MenuBarController!
     private var vmManager: VMLifecycleManager!
+    private var sleepWakeManager: SleepWakeManager!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         stateController = VMStateController()
         menuBarController = MenuBarController()
         vmManager = VMLifecycleManager(stateController: stateController)
+        sleepWakeManager = SleepWakeManager(vmManager: vmManager, stateController: stateController)
 
-        // Wire state changes to menu bar
+        // Crash detection from previous run
+        if StateFile.detectCrash() {
+            print("[App] Previous run crashed — cleaning up stale state file")
+            StateFile.remove()
+        }
+
+        // Wire state changes to menu bar + state persistence
         stateController.onStateChange = { [weak self] state in
             self?.menuBarController.updateForState(state)
+            StateFile.persist(state: state)
         }
 
         // Wire menu bar actions
@@ -27,6 +36,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             Task {
                 await self.vmManager.stopVM()
+            }
+        }
+
+        menuBarController.onRestart = { [weak self] in
+            guard let self else { return }
+            Task {
+                await self.vmManager.restartVM()
             }
         }
 
@@ -45,6 +61,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Clean state file on normal exit
+        StateFile.remove()
+
         // Defensive cleanup — stopVM is idempotent
         Task {
             await vmManager.stopVM()
