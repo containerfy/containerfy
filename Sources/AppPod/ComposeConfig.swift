@@ -18,14 +18,28 @@ struct HealthCheckConfig: Sendable {
     let startupTimeoutSeconds: Int
 }
 
+/// A compose service with exposed ports (generates "Open" menu items).
+struct ServiceInfo: Sendable {
+    let name: String
+    let displayLabel: String
+    let ports: [PortMapping]
+
+    /// URL for the "Open" menu item: http://127.0.0.1:<first host port>
+    var openURL: URL? {
+        guard let first = ports.first else { return nil }
+        return URL(string: "http://127.0.0.1:\(first.hostPort)")
+    }
+}
+
 /// Parsed subset of docker-compose.yml that AppPod needs at runtime.
 struct ComposeConfig: Sendable {
     let portMappings: [PortMapping]
     let healthCheck: HealthCheckConfig?
     let displayName: String?
+    let services: [ServiceInfo]
 
     /// No compose file found — run with no port forwarding or health monitoring.
-    static let empty = ComposeConfig(portMappings: [], healthCheck: nil, displayName: nil)
+    static let empty = ComposeConfig(portMappings: [], healthCheck: nil, displayName: nil, services: [])
 }
 
 enum ComposeConfigParser {
@@ -57,7 +71,7 @@ enum ComposeConfigParser {
             throw ComposeError.invalidFormat
         }
 
-        let portMappings = parsePortMappings(from: root)
+        let (portMappings, services) = parseServices(from: root)
         let healthCheck = parseHealthCheck(from: root)
         let displayName = parseDisplayName(from: root)
 
@@ -67,31 +81,59 @@ enum ComposeConfigParser {
             print("[Compose] Found \(portMappings.count) port mapping(s): \(portMappings.map { "\($0.hostPort):\($0.containerPort)" }.joined(separator: ", "))")
         }
 
+        if !services.isEmpty {
+            print("[Compose] Menu items: \(services.map { "Open \($0.displayLabel)" }.joined(separator: ", "))")
+        }
+
         return ComposeConfig(
             portMappings: portMappings,
             healthCheck: healthCheck,
-            displayName: displayName
+            displayName: displayName,
+            services: services
         )
     }
 
     // MARK: - Private Parsers
 
-    private static func parsePortMappings(from root: [String: Any]) -> [PortMapping] {
-        guard let services = root["services"] as? [String: Any] else { return [] }
+    private static func parseServices(from root: [String: Any]) -> (portMappings: [PortMapping], services: [ServiceInfo]) {
+        guard let svcs = root["services"] as? [String: Any] else { return ([], []) }
 
-        var mappings: [PortMapping] = []
-        for (_, serviceConfig) in services {
+        var allMappings: [PortMapping] = []
+        var serviceInfos: [ServiceInfo] = []
+
+        for (name, serviceConfig) in svcs {
             guard let config = serviceConfig as? [String: Any],
                   let ports = config["ports"] as? [Any] else { continue }
 
+            var svcMappings: [PortMapping] = []
             for port in ports {
                 if let mapping = parsePortEntry(port) {
-                    mappings.append(mapping)
+                    svcMappings.append(mapping)
                 }
+            }
+
+            if !svcMappings.isEmpty {
+                allMappings.append(contentsOf: svcMappings)
+                serviceInfos.append(ServiceInfo(
+                    name: name,
+                    displayLabel: titleCase(name),
+                    ports: svcMappings
+                ))
             }
         }
 
-        return mappings
+        // Sort services alphabetically for consistent menu ordering
+        serviceInfos.sort { $0.name < $1.name }
+
+        return (allMappings, serviceInfos)
+    }
+
+    private static func titleCase(_ name: String) -> String {
+        name.replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: " ")
     }
 
     /// Parses a single port entry. Supports:

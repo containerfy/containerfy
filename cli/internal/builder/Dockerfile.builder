@@ -119,6 +119,17 @@ while IFS= read -r line; do
             fi
             printf 'ACK\n'
             ;;
+        LOGS:*)
+            lines=$(printf '%s' "$cmd" | cut -d: -f2)
+            if [ -f /data/docker-compose.yml ]; then
+                log_data=$(docker compose -f /data/docker-compose.yml logs --tail="$lines" --no-color 2>/dev/null)
+            else
+                log_data=""
+            fi
+            byte_count=$(printf '%s' "$log_data" | wc -c)
+            printf 'LOGS:%s\n%s' "$byte_count" "$log_data"
+            exit 0
+            ;;
         *)       printf 'ERR:unknown-command\n' ;;
     esac
 done

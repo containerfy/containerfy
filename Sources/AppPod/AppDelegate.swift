@@ -5,16 +5,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController!
     private var vmManager: VMLifecycleManager!
     private var sleepWakeManager: SleepWakeManager!
+    private var logsWindowController: LogsWindowController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Load compose config first (needed for menu bar setup)
+        let composeConfig = ComposeConfigParser.load()
+
         stateController = VMStateController()
-        menuBarController = MenuBarController()
+        menuBarController = MenuBarController(
+            displayName: composeConfig.displayName,
+            services: composeConfig.services
+        )
         vmManager = VMLifecycleManager(stateController: stateController)
         sleepWakeManager = SleepWakeManager(vmManager: vmManager, stateController: stateController)
+        logsWindowController = LogsWindowController(appName: composeConfig.displayName ?? "AppPod")
 
-        // Load compose config (port mappings, health check URL)
-        let composeConfig = ComposeConfigParser.load()
         vmManager.setComposeConfig(composeConfig)
+
+        // Wire log fetching
+        logsWindowController.fetchLogs = { [weak self] in
+            guard let self else { return nil }
+            return await self.vmManager.fetchLogs()
+        }
 
         // Crash detection from previous run
         if StateFile.detectCrash() {
@@ -53,6 +65,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             Task {
                 await self.vmManager.restartVM()
+            }
+        }
+
+        menuBarController.onViewLogs = { [weak self] in
+            self?.logsWindowController.showWindow()
+        }
+
+        menuBarController.onRemoveAppData = { [weak self] in
+            guard let self else { return }
+            Task {
+                await self.vmManager.destroyVM()
             }
         }
 

@@ -2,7 +2,7 @@
 # VM Agent Handler — per-connection command processor
 # Invoked by socat for each vsock connection on port 1024.
 # Protocol: line-based text.
-# Commands: HEALTH, SHUTDOWN, DISK, FORWARD:<vsock_port>:<target_port>, FORWARD-STOP
+# Commands: HEALTH, SHUTDOWN, DISK, FORWARD:<vsock_port>:<target_port>, FORWARD-STOP, LOGS:<lines>
 
 PIDS_FILE="/tmp/apppod-forwards.pids"
 
@@ -56,6 +56,18 @@ while IFS= read -r line; do
                 rm -f "$PIDS_FILE"
             fi
             printf 'ACK\n'
+            ;;
+        LOGS:*)
+            # LOGS:<lines> — fetch recent docker compose logs, then close connection
+            lines=$(printf '%s' "$cmd" | cut -d: -f2)
+            if [ -f /data/docker-compose.yml ]; then
+                log_data=$(docker compose -f /data/docker-compose.yml logs --tail="$lines" --no-color 2>/dev/null)
+            else
+                log_data=""
+            fi
+            byte_count=$(printf '%s' "$log_data" | wc -c)
+            printf 'LOGS:%s\n%s' "$byte_count" "$log_data"
+            exit 0
             ;;
         *)
             printf 'ERR:unknown-command\n'

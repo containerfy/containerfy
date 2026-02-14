@@ -269,6 +269,14 @@ final class VMLifecycleManager: NSObject, VZVirtualMachineDelegate {
         stateController.transition(to: .stopped)
     }
 
+    // MARK: - Logs
+
+    func fetchLogs(lines: Int = 200) async -> String? {
+        guard let vm,
+              let socketDevice = vm.socketDevices.first as? VZVirtioSocketDevice else { return nil }
+        return await VSockControl.fetchLogs(lines: lines, from: socketDevice)
+    }
+
     // MARK: - Post-Boot Services (Port Forwarding + Health Monitoring)
 
     private func startPostBootServices() async {

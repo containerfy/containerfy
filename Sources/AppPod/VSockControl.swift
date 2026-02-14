@@ -63,4 +63,72 @@ enum VSockControl {
         let response = await send(command: "SHUTDOWN", to: device, timeout: timeout)
         return response == "ACK"
     }
+
+    /// Fetches recent docker compose logs from the VM.
+    /// The VM agent closes the connection after sending logs, so we read until EOF.
+    static func fetchLogs(
+        lines: Int,
+        from device: VZVirtioSocketDevice,
+        timeout: TimeInterval = 10.0
+    ) async -> String? {
+        do {
+            let connection = try await device.connect(toPort: 1024)
+            let input = connection.fileHandleForReading
+            let output = connection.fileHandleForWriting
+
+            output.write("LOGS:\(lines)\n".data(using: .utf8)!)
+
+            let result: String? = await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    let workItem = DispatchWorkItem {
+                        var buffer = Data()
+                        while true {
+                            let chunk = input.availableData
+                            if chunk.isEmpty { break }
+                            buffer.append(chunk)
+                        }
+
+                        guard let response = String(data: buffer, encoding: .utf8),
+                              response.hasPrefix("LOGS:") else {
+                            continuation.resume(returning: nil)
+                            return
+                        }
+
+                        // Parse past "LOGS:<byte_count>\n" header
+                        if let newlineIndex = response.firstIndex(of: "\n") {
+                            let logData = String(response[response.index(after: newlineIndex)...])
+                            continuation.resume(returning: logData)
+                        } else {
+                            continuation.resume(returning: "")
+                        }
+                    }
+
+                    let timeoutItem = DispatchWorkItem {
+                        workItem.cancel()
+                        continuation.resume(returning: nil)
+                    }
+
+                    DispatchQueue.global().async(execute: workItem)
+                    DispatchQueue.global().asyncAfter(
+                        deadline: .now() + timeout,
+                        execute: timeoutItem
+                    )
+                    workItem.notify(queue: .global()) {
+                        timeoutItem.cancel()
+                    }
+                }
+            } onCancel: {
+                try? input.close()
+                try? output.close()
+            }
+
+            try? input.close()
+            try? output.close()
+
+            return result
+        } catch {
+            print("[VSock] LOGS fetch failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
 }

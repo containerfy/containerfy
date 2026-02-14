@@ -35,15 +35,15 @@ Make containers reachable from the host and monitor their health.
 - [x] Error recovery: auto-restart on health failure
 - [x] Port conflict detection with clear error messages
 
-## Phase 3 — Menu Bar UX
+## Phase 3 — Menu Bar UX ✅
 
 Full dynamic menu bar driven by the compose file.
 
-- [ ] Dynamic menu from compose: Open items from services with ports
-- [ ] Status icon per state (stopped, starting, running, error)
-- [ ] Logs window (batch fetch)
-- [ ] Preferences: launch at login
-- [ ] Remove App Data menu item (cleanup `~/Library/Application Support/<AppName>/`)
+- [x] Dynamic menu from compose: Open items from services with ports
+- [x] Status icon per state (stopped, starting, running, error)
+- [x] Logs window (batch fetch)
+- [x] Preferences: launch at login
+- [x] Remove App Data menu item (cleanup `~/Library/Application Support/<AppName>/`)
 
 ## Phase 4 — Go CLI (`apppod pack`)
 
@@ -95,6 +95,6 @@ Production readiness and end-to-end validation.
 
 ## Recommended Next Steps
 
-**Phase 3 (Menu Bar UX)** is the natural next phase — it adds dynamic menu items from the compose file, logs window, and preferences.
+**Phase 4 (Go CLI)** is the natural next phase — its foundation (builder Dockerfile, ext4 script, VM agent, Docker check) is already in place. The CLI produces distributable `.app` bundles from compose files.
 
-**Phase 4 (Go CLI)** can proceed in parallel since its foundation (builder Dockerfile, ext4 script, VM agent, Docker check) is already in place from Phase 0.
+**Phase 5 (Signing + Distribution)** can follow Phase 4, or proceed in parallel for the signing/notarization infrastructure.
