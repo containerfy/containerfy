@@ -399,13 +399,15 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Sleep/wake** — VM clock skew, stale connections, filesystem inconsistency | Health checks fail, containers misbehave | `VZVirtualMachine.pause()` on sleep, `resume()` on wake (macOS 14+). Re-establish vsock after resume, auto-restart if health fails within 15s. ext4 journaling handles filesystem recovery. |
+| **Sleep/wake** — VM clock skew, stale connections after resume | Health checks fail, containers misbehave | macOS 14 native `pause()`/`resume()` eliminates most issues. Re-establish vsock after resume, auto-restart if health fails within 15s. ext4 journaling handles edge cases. |
 | **Disk corruption** — force-quit, power loss, kernel panic | VM won't boot | ext4 journaling + fsck on boot. Root image is rebuildable from compressed source in `.app` bundle. Data image is separate and preserved. |
 | **Port conflicts** — another app on the same port | App can't start | Test-bind ports before forwarding. Hard error with clear message. No auto-reassign in v1 (breaks compose contract). |
-| **Virtualization.framework instability** — younger API, edge cases around vsock/sleep/memory | Crashes, hangs | Pin macOS 14+. Wrap all VZ calls in do/catch. "Hard reset" path: destroy and recreate VM object. Log all VZ delegate callbacks. |
+| **Virtualization.framework edge cases** — vsock reconnection, memory reclaim, delegate timing | Crashes, hangs | Pin macOS 14+ (stable generation). Wrap all VZ calls in do/catch. "Hard reset" path: destroy and recreate VM object. Log all VZ delegate callbacks. |
 | **Memory pressure / OOM** — macOS jetsam kills VM | Data loss, app crash | Validate available memory before VM creation. Allocate conservatively. Detect jetsam via `VZVirtualMachineDelegate.guestDidStop` and surface clear error. |
 | **First-launch decompression** — 2-4 GB image takes 20-60s | User thinks app is hung | Show "Preparing first launch..." progress. Use lz4 (3x faster than gzip). Background thread with cancellation. |
 | **Download size** — .app bundle can be 500 MB - 2 GB | Friction for distribution | Alpine base (~150 MB with Docker). Advise developers to use slim images. lz4 compression. |
+| **Notarization dependency** — Apple's notarization service availability, processing delays, policy changes | Developers can't ship signed builds during outages | `--unsigned` flag for local testing. Notarization is async (Apple side) — CLI polls with timeout. Document manual `xcrun notarytool` fallback if automation fails. |
+| **Secrets visible in bundle** — environment variables in `docker-compose.yml` are readable inside the `.app` | Credentials exposed if bundle is shared or inspected | Document clearly: compose file is not encrypted. Advise developers to use runtime secret injection (container entrypoints that read from mounted volumes) rather than hardcoding secrets in environment variables. v2 scope for encrypted secrets support. |
 
 ---
 
