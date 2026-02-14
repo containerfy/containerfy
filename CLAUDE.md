@@ -34,3 +34,4 @@ Use these perspectives for multi-angle review of changes:
 - All architecture decisions go in `ARCHITECTURE.md`
 - Progress tracked in `ROADMAP.md`
 - Squash commits on main
+- **No local toolchains required** — use Docker images for builds (e.g. `golang:1.22-alpine` for Go, builder container for VM images)
