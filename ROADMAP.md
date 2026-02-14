@@ -45,27 +45,27 @@ Full dynamic menu bar driven by the compose file.
 - [x] Preferences: launch at login
 - [x] Remove App Data menu item (cleanup `~/Library/Application Support/<AppName>/`)
 
-## Phase 4 — Go CLI (`apppod pack`)
+## Phase 4 — Go CLI (`apppod pack`) ✅
 
 Developer-facing CLI that produces a distributable `.app` bundle.
 
-- [ ] Compose parser: validate `x-apppod`, reject hard-rejected keywords
-- [ ] Image pull + save (`docker pull` / `docker save`)
+- [x] Compose parser: validate `x-apppod`, reject hard-rejected keywords
+- [x] Image pull + save (`docker pull` / `docker save`)
 - [x] Builder container Dockerfile (Alpine arm64 + e2fsprogs + docker)
 - [x] ext4 creation script: Alpine bootstrap + Docker Engine + packages
-- [ ] Docker-in-Docker image preloading (privileged builder, `docker load`)
+- [x] Image preloading (tar copy into root image, `docker load` at first boot via OpenRC)
 - [x] VM agent scripts + OpenRC service files
-- [ ] Dynamic image sizing (base + image tars + 25% headroom)
-- [ ] Kernel/initramfs extraction + virtio module verification
-- [ ] lz4 compression
-- [ ] .app bundle assembly
-- [ ] CLI reference flags: `--compose`, `--output`, `--unsigned`
-- [ ] `env_file:` bundling (detect references, copy files, reject if missing)
+- [x] Dynamic image sizing (base + image tars + 25% headroom)
+- [x] Kernel/initramfs extraction + virtio module verification
+- [x] lz4 compression
+- [x] .app bundle assembly
+- [x] CLI reference flags: `--compose`, `--output`, `--unsigned`
+- [x] `env_file:` bundling (detect references, copy files, reject if missing)
 - [x] Docker availability check (`docker info`) before any work
-- [ ] `--platform linux/arm64` pinned on all `docker pull` invocations
-- [ ] Healthcheck URL port cross-validation against service ports
-- [ ] `Info.plist` generation (CFBundleIdentifier, CFBundleName, LSUIElement, etc.)
-- [ ] Progress reporting (step counter for multi-minute operations)
+- [x] `--platform linux/arm64` pinned on all `docker pull` invocations
+- [x] Healthcheck URL port cross-validation against service ports
+- [x] `Info.plist` generation (CFBundleIdentifier, CFBundleName, LSUIElement, etc.)
+- [x] Progress reporting (step counter for multi-minute operations)
 
 ## Phase 5 — Signing + Distribution
 
@@ -95,6 +95,6 @@ Production readiness and end-to-end validation.
 
 ## Recommended Next Steps
 
-**Phase 4 (Go CLI)** is the natural next phase — its foundation (builder Dockerfile, ext4 script, VM agent, Docker check) is already in place. The CLI produces distributable `.app` bundles from compose files.
+**Phase 5 (Signing + Distribution)** is the natural next phase — codesign, notarization, hardened runtime, and DMG packaging for distributable `.app` bundles.
 
-**Phase 5 (Signing + Distribution)** can follow Phase 4, or proceed in parallel for the signing/notarization infrastructure.
+**Phase 6 (Polish + Hardening)** follows once signing is in place, providing end-to-end validation and crash recovery UX.

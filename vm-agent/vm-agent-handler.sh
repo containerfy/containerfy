@@ -4,6 +4,7 @@
 # Protocol: line-based text.
 # Commands: HEALTH, SHUTDOWN, DISK, FORWARD:<vsock_port>:<target_port>, FORWARD-STOP, LOGS:<lines>
 
+COMPOSE_FILE="/etc/apppod/docker-compose.yml"
 PIDS_FILE="/tmp/apppod-forwards.pids"
 
 while IFS= read -r line; do
@@ -16,8 +17,8 @@ while IFS= read -r line; do
         SHUTDOWN)
             printf 'ACK\n'
             # Stop compose services gracefully before powering off
-            if [ -f /data/docker-compose.yml ]; then
-                docker compose -f /data/docker-compose.yml down --timeout 15 2>/dev/null
+            if [ -f "$COMPOSE_FILE" ]; then
+                docker compose -f "$COMPOSE_FILE" down --timeout 15 2>/dev/null
             fi
             poweroff
             ;;
