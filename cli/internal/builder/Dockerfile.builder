@@ -77,6 +77,7 @@ AGENT
 
 cat > $MOUNT/usr/local/bin/vm-agent-handler.sh <<'HANDLER'
 #!/bin/sh
+PIDS_FILE="/tmp/apppod-forwards.pids"
 while IFS= read -r line; do
     cmd=$(printf '%s' "$line" | tr -d '\r')
     case "$cmd" in
@@ -87,6 +88,36 @@ while IFS= read -r line; do
                 docker compose -f /data/docker-compose.yml down --timeout 15 2>/dev/null
             fi
             poweroff
+            ;;
+        DISK)
+            if mountpoint -q /data 2>/dev/null; then
+                eval $(df -m /data | awk 'NR==2 {printf "used=%s;total=%s", $3, $2}')
+                printf 'DISK:%s/%s\n' "$used" "$total"
+            else
+                printf 'DISK:0/0\n'
+            fi
+            ;;
+        FORWARD:*)
+            params=$(printf '%s' "$cmd" | cut -d: -f2-)
+            vsock_port=$(printf '%s' "$params" | cut -d: -f1)
+            target_port=$(printf '%s' "$params" | cut -d: -f2)
+            if [ -n "$vsock_port" ] && [ -n "$target_port" ]; then
+                setsid socat VSOCK-LISTEN:"$vsock_port",reuseaddr,fork TCP:127.0.0.1:"$target_port" &
+                echo $! >> "$PIDS_FILE"
+                printf 'ACK\n'
+            else
+                printf 'ERR:invalid-forward-params\n'
+            fi
+            ;;
+        FORWARD-STOP)
+            if [ -f "$PIDS_FILE" ]; then
+                while read pid; do
+                    kill "$pid" 2>/dev/null
+                    pkill -P "$pid" 2>/dev/null
+                done < "$PIDS_FILE"
+                rm -f "$PIDS_FILE"
+            fi
+            printf 'ACK\n'
             ;;
         *)       printf 'ERR:unknown-command\n' ;;
     esac

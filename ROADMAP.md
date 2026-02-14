@@ -25,15 +25,15 @@ Full VM lifecycle management and host validation.
 - [x] Graceful shutdown: vsock SHUTDOWN → `docker compose down` → ACPI poweroff → force kill
 - [x] State persistence file for crash recovery (`state.json` in Application Support)
 
-## Phase 2 — Port Forwarding + Health
+## Phase 2 — Port Forwarding + Health ✅
 
 Make containers reachable from the host and monitor their health.
 
-- [ ] Port forwarder: vsock↔TCP for all compose `ports:`
-- [ ] Health monitor: HTTP polling, startup timeout, failure detection
-- [ ] Disk usage monitoring (DISK protocol command)
-- [ ] Error recovery: auto-restart on health failure
-- [ ] Port conflict detection with clear error messages
+- [x] Port forwarder: vsock↔TCP for all compose `ports:`
+- [x] Health monitor: HTTP polling, startup timeout, failure detection
+- [x] Disk usage monitoring (DISK protocol command)
+- [x] Error recovery: auto-restart on health failure
+- [x] Port conflict detection with clear error messages
 
 ## Phase 3 — Menu Bar UX
 
@@ -95,6 +95,6 @@ Production readiness and end-to-end validation.
 
 ## Recommended Next Steps
 
-**Phase 2 (Port Forwarding + Health)** is the natural next phase — it makes containers reachable from the host and adds health monitoring with auto-restart.
+**Phase 3 (Menu Bar UX)** is the natural next phase — it adds dynamic menu items from the compose file, logs window, and preferences.
 
 **Phase 4 (Go CLI)** can proceed in parallel since its foundation (builder Dockerfile, ext4 script, VM agent, Docker check) is already in place from Phase 0.

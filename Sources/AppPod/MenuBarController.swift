@@ -6,6 +6,7 @@ final class MenuBarController {
     private let menu: NSMenu
 
     private let statusMenuItem: NSMenuItem
+    private let diskWarningMenuItem: NSMenuItem
     private let startMenuItem: NSMenuItem
     private let stopMenuItem: NSMenuItem
     private let restartMenuItem: NSMenuItem
@@ -23,12 +24,17 @@ final class MenuBarController {
         statusMenuItem = NSMenuItem(title: "Status: Stopped", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
 
+        diskWarningMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        diskWarningMenuItem.isEnabled = false
+        diskWarningMenuItem.isHidden = true
+
         startMenuItem = NSMenuItem(title: "Start", action: nil, keyEquivalent: "")
         stopMenuItem = NSMenuItem(title: "Stop", action: nil, keyEquivalent: "")
         restartMenuItem = NSMenuItem(title: "Restart", action: nil, keyEquivalent: "")
         quitMenuItem = NSMenuItem(title: "Quit", action: nil, keyEquivalent: "q")
 
         menu.addItem(statusMenuItem)
+        menu.addItem(diskWarningMenuItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(startMenuItem)
         menu.addItem(stopMenuItem)
@@ -61,6 +67,7 @@ final class MenuBarController {
             startMenuItem.isEnabled = true
             stopMenuItem.isEnabled = false
             restartMenuItem.isEnabled = false
+            clearDiskWarning()
         case .validatingHost:
             statusMenuItem.title = "Status: Validating..."
             startMenuItem.isEnabled = false
@@ -122,6 +129,16 @@ final class MenuBarController {
                 button.title = "⏳ AppPod"
             }
         }
+    }
+
+    func showDiskWarning(usedMB: Int, totalMB: Int) {
+        let percent = totalMB > 0 ? Int(Double(usedMB) / Double(totalMB) * 100) : 0
+        diskWarningMenuItem.title = "Disk: \(percent)% used (\(usedMB)/\(totalMB) MB)"
+        diskWarningMenuItem.isHidden = false
+    }
+
+    private func clearDiskWarning() {
+        diskWarningMenuItem.isHidden = true
     }
 
     @objc private func startClicked() {

@@ -10,6 +10,9 @@ final class VSockHealthCheck {
     private let pollInterval: TimeInterval = 2.0
     private let startupTimeout: TimeInterval = 120.0
 
+    /// Called when the VM becomes healthy (before state transition to .running).
+    var onHealthy: (() -> Void)?
+
     init(socketDevice: VZVirtioSocketDevice, stateController: VMStateController) {
         self.socketDevice = socketDevice
         self.stateController = stateController
@@ -55,6 +58,7 @@ final class VSockHealthCheck {
     private func handleHealthy() {
         print("[Health] VM is healthy")
         stateController.transition(to: .running)
+        onHealthy?()
         stop()
     }
 }

@@ -12,6 +12,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         vmManager = VMLifecycleManager(stateController: stateController)
         sleepWakeManager = SleepWakeManager(vmManager: vmManager, stateController: stateController)
 
+        // Load compose config (port mappings, health check URL)
+        let composeConfig = ComposeConfigParser.load()
+        vmManager.setComposeConfig(composeConfig)
+
         // Crash detection from previous run
         if StateFile.detectCrash() {
             print("[App] Previous run crashed — cleaning up stale state file")
@@ -24,10 +28,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             StateFile.persist(state: state)
         }
 
+        // Wire disk usage warnings to menu bar
+        vmManager.onDiskWarning = { [weak self] used, total in
+            self?.menuBarController.showDiskWarning(usedMB: used, totalMB: total)
+        }
+
         // Wire menu bar actions
         menuBarController.onStart = { [weak self] in
             guard let self else { return }
             Task {
+                self.vmManager.resetAutoRestart()
                 await self.vmManager.startVM()
             }
         }

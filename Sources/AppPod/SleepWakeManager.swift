@@ -46,6 +46,9 @@ final class SleepWakeManager {
 
         print("[Sleep] Pausing VM...")
         do {
+            // Tear down active vsock data connections before pause
+            vmManager.currentPortForwarder?.rebuildConnections()
+
             try await vm.pause()
             stateController.transition(to: .paused)
             print("[Sleep] VM paused")
