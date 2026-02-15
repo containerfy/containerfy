@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Containerfy — Docker Compose Apps as Native Mac Apps</title>
+  <meta name="description" content="Package any Docker Compose application into a native macOS menu bar app. One-click install for end users — no Docker required. Open source.">
+  <meta property="og:title" content="Containerfy — Docker Compose Apps as Native Mac Apps">
+  <meta property="og:description" content="Package any Docker Compose application into a native macOS menu bar app. One-click install for end users — no Docker required. Open source.">
+  <meta property="og:url" content="https://containerfy.dev">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect x='56' y='32' width='64' height='64' rx='18' fill='%23a78bfa'/%3E%3C/svg%3E">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: #f8faff;
+      color: #1e1b4b;
+      min-height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ── SVG Grid Background ── */
+    .bg-pattern {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    /* ── Layout ── */
+    .page {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      min-height: 100vh;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 40px;
+      gap: 60px;
+    }
+
+    .col-left {
+      flex: 1.4;
+      min-width: 0;
+    }
+    .col-right {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Logo */
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 40px;
+    }
+    .logo svg { width: 32px; height: 32px; }
+    .logo-text {
+      font-size: 18px;
+      font-weight: 700;
+      color: #4f46e5;
+      letter-spacing: -0.01em;
+    }
+
+    /* Headline */
+    h1 {
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      letter-spacing: -0.03em;
+      color: #1e1b4b;
+    }
+
+    .tagline {
+      font-size: 17px;
+      color: #64748b;
+      line-height: 1.55;
+      margin-bottom: 32px;
+      max-width: 480px;
+    }
+
+    /* Install pill */
+    .install-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 100px;
+      padding: 10px 12px 10px 20px;
+      margin-bottom: 28px;
+      max-width: 100%;
+    }
+    .install-cmd {
+      font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+      font-size: 14px;
+      color: #4f46e5;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .copy-btn {
+      background: #4f46e5;
+      border: none;
+      border-radius: 100px;
+      color: white;
+      font-size: 13px;
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .copy-btn:hover { background: #4338ca; }
+    .copy-btn.copied { background: #059669; }
+    .copy-btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+    /* Button row */
+    .buttons {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .btn-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border: 1.5px solid #c7d2fe;
+      border-radius: 100px;
+      color: #4f46e5;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-pill:hover {
+      background: #eef2ff;
+      border-color: #818cf8;
+    }
+    .btn-pill svg { width: 16px; height: 16px; fill: currentColor; }
+
+    /* Right column illustration */
+    .illustration {
+      width: 100%;
+      max-width: 360px;
+    }
+
+    /* Footnote */
+    .footnote {
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 13px;
+      z-index: 1;
+    }
+
+    /* Focus */
+    :focus-visible {
+      outline: 2px solid #4f46e5;
+      outline-offset: 2px;
+    }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      body { overflow: auto; }
+      .page {
+        flex-direction: column;
+        padding: 40px 24px 80px;
+        min-height: auto;
+        gap: 40px;
+      }
+      .col-right { display: none; }
+      .footnote { position: static; margin-top: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- SVG Grid Background -->
+  <svg class="bg-pattern" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+    <defs>
+      <pattern id="dots" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+        <circle cx="16" cy="16" r="1" fill="#c7d2fe"/>
+      </pattern>
+      <pattern id="grid" x="0" y="0" width="128" height="128" patternUnits="userSpaceOnUse">
+        <rect width="128" height="128" fill="url(#dots)"/>
+        <line x1="0" y1="64" x2="128" y2="64" stroke="#ddd6fe" stroke-width="0.5" stroke-dasharray="2,6"/>
+        <line x1="64" y1="0" x2="64" y2="128" stroke="#ddd6fe" stroke-width="0.5" stroke-dasharray="2,6"/>
+        <line x1="0" y1="0" x2="128" y2="128" stroke="#e0e7ff" stroke-width="0.3"/>
+        <line x1="128" y1="0" x2="0" y2="128" stroke="#e0e7ff" stroke-width="0.3"/>
+      </pattern>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#grid)"/>
+  </svg>
+
+  <div class="page">
+    <div class="col-left">
+      <div class="logo">
+        <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="32" width="56" height="64" rx="6" stroke="#4f46e5" stroke-width="4"/>
+          <line x1="20" y1="36" x2="20" y2="92" stroke="#4f46e5" stroke-width="3"/>
+          <line x1="34" y1="36" x2="34" y2="92" stroke="#4f46e5" stroke-width="3"/>
+          <line x1="48" y1="36" x2="48" y2="92" stroke="#4f46e5" stroke-width="3"/>
+          <rect x="56" y="32" width="64" height="64" rx="18" fill="#4f46e5"/>
+        </svg>
+        <span class="logo-text">Containerfy</span>
+      </div>
+
+      <h1>Package Docker Compose apps as native Mac apps</h1>
+      <p class="tagline">Your users drag, double-click, done. No Docker, no terminal, no complexity.</p>
+
+      <div class="install-pill">
+        <span class="install-cmd">curl -fsSL https://containerfy.dev/install.sh | bash</span>
+        <button class="copy-btn" onclick="copyInstall(this)">
+          <svg viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25zM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"/></svg>
+          Copy
+        </button>
+      </div>
+
+      <div class="buttons">
+        <a href="https://github.com/containerfy/containerfy" class="btn-pill">
+          <svg viewBox="0 0 16 16"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/></svg>
+          Star on GitHub
+        </a>
+        <a href="https://github.com/containerfy/containerfy/blob/main/README.md" class="btn-pill">Docs</a>
+      </div>
+    </div>
+
+    <div class="col-right">
+      <!-- Illustration: compose.yml → Mac app icon with menu bar mockup -->
+      <svg class="illustration" viewBox="0 0 320 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Compose file icon -->
+        <rect x="20" y="20" width="80" height="100" rx="8" stroke="#4f46e5" stroke-width="2" fill="#eef2ff"/>
+        <line x1="36" y1="44" x2="84" y2="44" stroke="#818cf8" stroke-width="2" stroke-linecap="round"/>
+        <line x1="36" y1="56" x2="76" y2="56" stroke="#c7d2fe" stroke-width="2" stroke-linecap="round"/>
+        <line x1="36" y1="68" x2="80" y2="68" stroke="#c7d2fe" stroke-width="2" stroke-linecap="round"/>
+        <line x1="36" y1="80" x2="68" y2="80" stroke="#c7d2fe" stroke-width="2" stroke-linecap="round"/>
+        <line x1="36" y1="92" x2="72" y2="92" stroke="#c7d2fe" stroke-width="2" stroke-linecap="round"/>
+        <text x="60" y="140" text-anchor="middle" fill="#64748b" font-size="11" font-family="-apple-system, sans-serif">compose.yml</text>
+
+        <!-- Dotted arrow -->
+        <line x1="120" y1="70" x2="190" y2="70" stroke="#818cf8" stroke-width="2" stroke-dasharray="6,4"/>
+        <polygon points="190,64 202,70 190,76" fill="#818cf8"/>
+
+        <!-- Mac app icon (rounded square) -->
+        <rect x="210" y="20" width="100" height="100" rx="24" fill="#4f46e5"/>
+        <rect x="210" y="20" width="100" height="100" rx="24" stroke="#4338ca" stroke-width="2"/>
+        <!-- Container icon inside app -->
+        <rect x="236" y="46" width="20" height="24" rx="2" stroke="white" stroke-width="1.5" fill="none"/>
+        <line x1="242" y1="47" x2="242" y2="69" stroke="white" stroke-width="1"/>
+        <line x1="248" y1="47" x2="248" y2="69" stroke="white" stroke-width="1"/>
+        <rect x="254" y="46" width="20" height="24" rx="6" fill="white" fill-opacity="0.9"/>
+        <text x="260" y="140" text-anchor="middle" fill="#64748b" font-size="11" font-family="-apple-system, sans-serif">MyApp.app</text>
+
+        <!-- Menu bar mockup below -->
+        <rect x="160" y="190" width="160" height="24" rx="4" fill="#1e1b4b"/>
+        <circle cx="310" cy="202" r="4" fill="#818cf8"/>
+        <!-- Dropdown -->
+        <rect x="236" y="218" width="84" height="100" rx="8" fill="white" stroke="#c7d2fe" stroke-width="1"/>
+        <circle cx="254" cy="238" r="4" fill="#22c55e"/>
+        <text x="264" y="241" fill="#1e1b4b" font-size="10" font-family="-apple-system, sans-serif">Running</text>
+        <line x1="248" y1="254" x2="308" y2="254" stroke="#e0e7ff" stroke-width="1"/>
+        <text x="254" y="272" fill="#64748b" font-size="9" font-family="-apple-system, sans-serif">Open in Browser</text>
+        <text x="254" y="290" fill="#64748b" font-size="9" font-family="-apple-system, sans-serif">View Logs</text>
+        <line x1="248" y1="298" x2="308" y2="298" stroke="#e0e7ff" stroke-width="1"/>
+        <text x="254" y="312" fill="#ef4444" font-size="9" font-family="-apple-system, sans-serif">Quit</text>
+
+        <!-- Connecting line from app to menu bar -->
+        <line x1="260" y1="124" x2="300" y2="190" stroke="#c7d2fe" stroke-width="1" stroke-dasharray="4,3"/>
+      </svg>
+    </div>
+  </div>
+
+  <p class="footnote">macOS 14+ &middot; Apple Silicon</p>
+
+  <script>
+    function copyInstall(btn) {
+      navigator.clipboard.writeText("curl -fsSL https://containerfy.dev/install.sh | bash").then(function() {
+        btn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg> Copied!';
+        btn.classList.add("copied");
+        setTimeout(function() {
+          btn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25zM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"/></svg> Copy';
+          btn.classList.remove("copied");
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

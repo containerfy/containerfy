@@ -4,7 +4,7 @@ set -euo pipefail
 # Containerfy installer — downloads the latest release binary and VM base image.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/containerfy/containerfy/main/install.sh | bash
+#   curl -fsSL https://containerfy.dev/install.sh | bash
 
 REPO="containerfy/containerfy"
 INSTALL_DIR="/usr/local/bin"

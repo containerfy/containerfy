@@ -18,7 +18,7 @@ The VM is powered by Apple's Virtualization.framework (Apple Silicon native). Al
 ### Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/containerfy/containerfy/main/install.sh | bash
+curl -fsSL https://containerfy.dev/install.sh | bash
 ```
 
 This installs the `containerfy` binary to `/usr/local/bin/` and the VM base image to `~/.containerfy/base/`.
