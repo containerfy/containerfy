@@ -1,0 +1,24 @@
+#!/sbin/openrc-run
+
+description="Start compose services"
+
+depend() {
+    need docker
+    after docker
+}
+
+start() {
+    ebegin "Starting compose services"
+    if [ -f /etc/apppod/docker-compose.yml ]; then
+        docker compose -f /etc/apppod/docker-compose.yml up -d
+    fi
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping compose services"
+    if [ -f /etc/apppod/docker-compose.yml ]; then
+        docker compose -f /etc/apppod/docker-compose.yml down --timeout 15
+    fi
+    eend $?
+}

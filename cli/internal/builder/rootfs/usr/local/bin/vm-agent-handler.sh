@@ -61,8 +61,8 @@ while IFS= read -r line; do
         LOGS:*)
             # LOGS:<lines> — fetch recent docker compose logs, then close connection
             lines=$(printf '%s' "$cmd" | cut -d: -f2)
-            if [ -f /data/docker-compose.yml ]; then
-                log_data=$(docker compose -f /data/docker-compose.yml logs --tail="$lines" --no-color 2>/dev/null)
+            if [ -f "$COMPOSE_FILE" ]; then
+                log_data=$(docker compose -f "$COMPOSE_FILE" logs --tail="$lines" --no-color 2>/dev/null)
             else
                 log_data=""
             fi

@@ -1,0 +1,38 @@
+#!/sbin/openrc-run
+
+description="Format and mount data disk (/dev/vdb)"
+
+depend() {
+    before docker
+    before vm-agent
+    before apppod-compose
+    before apppod-seed
+}
+
+start() {
+    ebegin "Preparing data disk"
+    if [ ! -b /dev/vdb ]; then
+        ewarn "/dev/vdb not found, skipping data disk"
+        eend 0
+        return 0
+    fi
+
+    # Format if unformatted (no filesystem detected)
+    if ! blkid /dev/vdb >/dev/null 2>&1; then
+        einfo "Formatting /dev/vdb as ext4..."
+        mkfs.ext4 -F /dev/vdb || { eend 1; return 1; }
+    fi
+
+    # Mount if not already mounted
+    if ! mountpoint -q /data; then
+        mkdir -p /data
+        mount /dev/vdb /data || { eend 1; return 1; }
+    fi
+    eend 0
+}
+
+stop() {
+    ebegin "Unmounting data disk"
+    umount /data 2>/dev/null
+    eend 0
+}

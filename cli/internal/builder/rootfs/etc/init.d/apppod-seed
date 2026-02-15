@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+
+description="Seed Docker data from preloaded images"
+
+depend() {
+    after data-disk
+    before docker
+}
+
+start() {
+    # Copy preloaded images to data disk on first boot
+    if [ -d /var/lib/docker/overlay2 ] && [ ! -d /data/docker ]; then
+        ebegin "Seeding Docker with preloaded images"
+        cp -a /var/lib/docker /data/docker
+        eend $?
+    else
+        eend 0
+    fi
+}

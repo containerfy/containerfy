@@ -1,0 +1,11 @@
+#!/sbin/openrc-run
+
+description="VM Agent - vsock control channel"
+command="/usr/local/bin/vm-agent.sh"
+command_background=true
+pidfile="/run/vm-agent.pid"
+
+depend() {
+    need docker
+    after docker
+}

@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	builderImageName  = "apppod-builder"
-	builderDockerfile = "internal/builder/Dockerfile.builder"
+	builderImageName = "apppod-builder"
+	builderDir       = "internal/builder"
 )
 
 // CheckDocker verifies that Docker is running and accessible.
@@ -99,8 +99,7 @@ func buildBuilderImage() error {
 		"docker", "build",
 		"--platform", "linux/arm64",
 		"-t", builderImageName,
-		"-f", builderDockerfile,
-		".",
+		builderDir,
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
