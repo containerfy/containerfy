@@ -3,7 +3,7 @@ FROM --platform=linux/arm64 alpine:3.20 AS vm
 
 RUN apk add --no-cache \
     alpine-base openrc docker docker-cli-compose \
-    socat linux-lts e2fsprogs
+    socat linux-lts e2fsprogs lz4 rsync
 
 COPY rootfs/ /
 
