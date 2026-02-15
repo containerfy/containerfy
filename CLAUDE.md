@@ -8,6 +8,12 @@ AppPod packages a Docker Compose application into a native macOS menu bar app wi
 ARCHITECTURE.md   — Design decisions, component specs, locked decisions
 ROADMAP.md        — Phased implementation plan with progress tracking
 CLAUDE.md         — This file: project context, expert roles, conventions
+Sources/AppPod/   — Swift source (19 files: GUI + CLI in one binary)
+vm/               — VM base image build (Dockerfile, rootfs, build-image.sh)
+Resources/        — Entitlements.plist
+Package.swift     — SPM config
+install.sh        — Developer install script (curl | bash)
+.github/workflows/release.yml — CI: build + publish releases
 ```
 
 ## Tech Stack
@@ -33,5 +39,6 @@ Use these perspectives for multi-angle review of changes:
 - All architecture decisions go in `ARCHITECTURE.md`
 - Progress tracked in `ROADMAP.md`
 - Squash commits on main
+- **Develop on macOS** — Swift + Virtualization.framework requires a Mac (no devcontainer)
 - **No Docker required for developers** — VM-based build eliminates Docker Desktop dependency
 - **CI builds VM base image** — developers install binary + base image via `install.sh`

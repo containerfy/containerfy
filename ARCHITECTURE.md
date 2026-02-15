@@ -391,7 +391,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 
 | Field | Why AppPod reads it |
 |---|---|
-| `services[*].image` | Preload images into root disk at build time via Docker-in-Docker (no pull at runtime) |
+| `services[*].image` | Preload images into root disk at build time (no pull at runtime) |
 | `services[*].ports` | Set up vsock↔TCP port forwarding on the host; generate menu items |
 | Top-level `volumes` | Provision named volumes on the persistent data disk |
 | `services[*].env_file` | Bundle referenced `.env` files into root image alongside compose file |
@@ -489,4 +489,4 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | **Log streaming** | Batch-fetch only in v1 (`LOGS:<lines>` → response) | Logs window shows recent lines, refreshes on demand or timer. Real-time tailing deferred to v2. |
 | **Quit vs Stop** | Quit = Stop VM + exit process | Simpler model. No "app running with VM stopped" state. Fewer states to manage. |
 | **`env_file:` handling** | `apppod pack` bundles referenced env files into root image | Common in real-world compose files. Silent runtime failure if missing. Reject at pack time if file not found. |
-| **Control protocol scope** | Minimal for v1: HEALTH, DISK, LOGS, SHUTDOWN only | Add VERSION/STATUS/RESTART in v2 if needed. Avoids speculative complexity. |
+| **Control protocol scope** | HEALTH, DISK, LOGS, SHUTDOWN for runtime; BUILD, PACK for build mode | Add VERSION/STATUS/RESTART in v2 if needed. Avoids speculative complexity. |

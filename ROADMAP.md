@@ -1,6 +1,6 @@
 # AppPod Roadmap
 
-Each phase is a shippable checkpoint. Phases 0-4 are sequential (Swift app + Go CLI). Phase 5 unifies into a single Swift binary. Phases 6-7 follow once the unified binary is in place.
+Each phase is a shippable checkpoint. Phases 0-3 built the Swift app. Phase 4 added a Go CLI (now superseded). Phase 5 unified everything into a single Swift binary. Phases 6-7 follow.
 
 ---
 
@@ -45,9 +45,9 @@ Full dynamic menu bar driven by the compose file.
 - [x] Preferences: launch at login
 - [x] Remove App Data menu item (cleanup `~/Library/Application Support/<AppName>/`)
 
-## Phase 4 — Go CLI (`apppod pack`) ✅
+## Phase 4 — Go CLI (`apppod pack`) ✅ *(superseded by Phase 5)*
 
-Developer-facing CLI that produces a distributable `.app` bundle.
+Developer-facing CLI that produces a distributable `.app` bundle. Go CLI and `cli/` directory removed in Phase 5.
 
 - [x] Compose parser: validate `x-apppod`, reject hard-rejected keywords
 - [x] Builder container Dockerfile (Alpine arm64 + Docker-in-Docker)
