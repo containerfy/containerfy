@@ -6,7 +6,7 @@ Containerfy packages a Docker Compose application into a native macOS menu bar a
 
 ```
 ARCHITECTURE.md   — Design decisions, component specs, locked decisions
-ROADMAP.md        — Phased implementation plan with progress tracking
+README.md         — Public-facing project overview and usage guide
 CLAUDE.md         — This file: project context, expert roles, conventions
 Sources/Containerfy/   — Swift source (19 files: GUI + CLI in one binary)
 vm/               — VM base image build (Dockerfile, rootfs, build-image.sh)
@@ -37,7 +37,7 @@ Use these perspectives for multi-angle review of changes:
 ## Conventions
 
 - All architecture decisions go in `ARCHITECTURE.md`
-- Progress tracked in `ROADMAP.md`
+- Project status tracked in `README.md`
 - Squash commits on main
 - **Develop on macOS** — Swift + Virtualization.framework requires a Mac (no devcontainer)
 - **No Docker required for developers** — VM-based build eliminates Docker Desktop dependency
