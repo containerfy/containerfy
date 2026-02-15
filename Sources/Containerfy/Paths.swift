@@ -3,7 +3,7 @@ import Foundation
 enum Paths {
     static var applicationSupport: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return base.appendingPathComponent("AppPod")
+        return base.appendingPathComponent("Containerfy")
     }
 
     static var kernelURL: URL {
@@ -30,7 +30,7 @@ enum Paths {
         Bundle.main.url(forResource: "vm-root.img", withExtension: "lz4")
     }
 
-    /// Compose file from the app bundle (placed there by `apppod pack`)
+    /// Compose file from the app bundle (placed there by `containerfy pack`)
     static var composeFileURL: URL? {
         Bundle.main.url(forResource: "docker-compose", withExtension: "yml")
     }

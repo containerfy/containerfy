@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "AppPod",
+    name: "Containerfy",
     platforms: [
         .macOS(.v14)
     ],
@@ -11,9 +11,9 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "AppPod",
+            name: "Containerfy",
             dependencies: ["Yams"],
-            path: "Sources/AppPod",
+            path: "Sources/Containerfy",
             linkerSettings: [
                 .linkedFramework("Virtualization"),
                 .linkedFramework("Network"),

@@ -26,7 +26,7 @@ final class MenuBarController: NSObject {
     var onRemoveAppData: (() -> Void)?
 
     init(displayName: String?, services: [ServiceInfo]) {
-        self.appName = displayName ?? "AppPod"
+        self.appName = displayName ?? "Containerfy"
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         menu = NSMenu()

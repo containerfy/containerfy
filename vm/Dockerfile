@@ -9,11 +9,11 @@ COPY rootfs/ /
 
 RUN chmod +x /usr/local/bin/vm-agent*.sh \
     /etc/init.d/vm-agent \
-    /etc/init.d/apppod-compose /etc/init.d/data-disk && \
+    /etc/init.d/containerfy-compose /etc/init.d/data-disk && \
     rc-update add networking default && \
     rc-update add docker default && \
     rc-update add vm-agent default && \
-    rc-update add apppod-compose default && \
+    rc-update add containerfy-compose default && \
     rc-update add data-disk default && \
     mkdir -p /data
 

@@ -18,7 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         vmManager = VMLifecycleManager(stateController: stateController)
         sleepWakeManager = SleepWakeManager(vmManager: vmManager, stateController: stateController)
-        logsWindowController = LogsWindowController(appName: composeConfig.displayName ?? "AppPod")
+        logsWindowController = LogsWindowController(appName: composeConfig.displayName ?? "Containerfy")
 
         vmManager.setComposeConfig(composeConfig)
 

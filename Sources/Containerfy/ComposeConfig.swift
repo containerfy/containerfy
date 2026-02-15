@@ -10,7 +10,7 @@ struct PortMapping: Sendable {
     var vsockPort: UInt32 { UInt32(10000) + UInt32(hostPort) }
 }
 
-/// Health check configuration from `x-apppod.healthcheck`.
+/// Health check configuration from `x-containerfy.healthcheck`.
 struct HealthCheckConfig: Sendable {
     let url: String
     let intervalSeconds: Int
@@ -31,7 +31,7 @@ struct ServiceInfo: Sendable {
     }
 }
 
-/// Parsed subset of docker-compose.yml that AppPod needs at runtime.
+/// Parsed subset of docker-compose.yml that Containerfy needs at runtime.
 struct ComposeConfig: Sendable {
     let portMappings: [PortMapping]
     let healthCheck: HealthCheckConfig?
@@ -125,7 +125,7 @@ enum ComposeConfigParser {
     private static let nameRegex = try! NSRegularExpression(pattern: #"^[a-zA-Z][a-zA-Z0-9-]{0,63}$"#)
     private static let semverRegex = try! NSRegularExpression(pattern: #"^\d+\.\d+\.\d+"#)
 
-    /// Full build-time parse — validates x-apppod, rejects unsupported keywords, extracts images/env_files.
+    /// Full build-time parse — validates x-containerfy, rejects unsupported keywords, extracts images/env_files.
     static func parseBuild(composePath: String) throws -> ComposeConfig {
         let absPath = (composePath as NSString).standardizingPath
         let fullPath: String
@@ -147,55 +147,55 @@ enum ComposeConfigParser {
             throw ComposeError.invalidFormat
         }
 
-        // Parse x-apppod block (required for build)
-        guard let xApppod = root["x-apppod"] as? [String: Any] else {
-            throw ComposeError.missingField("x-apppod")
+        // Parse x-containerfy block (required for build)
+        guard let xContainerfy = root["x-containerfy"] as? [String: Any] else {
+            throw ComposeError.missingField("x-containerfy")
         }
 
         // name (required)
-        guard let name = xApppod["name"] as? String, !name.isEmpty else {
-            throw ComposeError.missingField("x-apppod.name")
+        guard let name = xContainerfy["name"] as? String, !name.isEmpty else {
+            throw ComposeError.missingField("x-containerfy.name")
         }
         let nameRange = NSRange(name.startIndex..., in: name)
         guard nameRegex.firstMatch(in: name, range: nameRange) != nil else {
-            throw ComposeError.invalidValue("x-apppod.name", name, "must match ^[a-zA-Z][a-zA-Z0-9-]{0,63}$")
+            throw ComposeError.invalidValue("x-containerfy.name", name, "must match ^[a-zA-Z][a-zA-Z0-9-]{0,63}$")
         }
 
         // version (required)
-        guard let version = xApppod["version"] as? String, !version.isEmpty else {
-            throw ComposeError.missingField("x-apppod.version")
+        guard let version = xContainerfy["version"] as? String, !version.isEmpty else {
+            throw ComposeError.missingField("x-containerfy.version")
         }
         let versionRange = NSRange(version.startIndex..., in: version)
         guard semverRegex.firstMatch(in: version, range: versionRange) != nil else {
-            throw ComposeError.invalidValue("x-apppod.version", version, "not valid semver")
+            throw ComposeError.invalidValue("x-containerfy.version", version, "not valid semver")
         }
 
         // identifier (required)
-        guard let identifier = xApppod["identifier"] as? String, !identifier.isEmpty else {
-            throw ComposeError.missingField("x-apppod.identifier")
+        guard let identifier = xContainerfy["identifier"] as? String, !identifier.isEmpty else {
+            throw ComposeError.missingField("x-containerfy.identifier")
         }
 
         // display_name (optional)
-        let displayName = (xApppod["display_name"] as? String) ?? (xApppod["name"] as? String)
+        let displayName = (xContainerfy["display_name"] as? String) ?? (xContainerfy["name"] as? String)
 
         // icon (optional)
-        let icon = xApppod["icon"] as? String
+        let icon = xContainerfy["icon"] as? String
 
         // vm (required)
-        guard let vm = xApppod["vm"] as? [String: Any] else {
-            throw ComposeError.missingField("x-apppod.vm")
+        guard let vm = xContainerfy["vm"] as? [String: Any] else {
+            throw ComposeError.missingField("x-containerfy.vm")
         }
         let (cpuMin, cpuRecommended, memoryMBMin, memoryMBRecommended, diskMB) = try parseVMConfig(vm)
 
         // healthcheck (required)
-        guard let hc = xApppod["healthcheck"] as? [String: Any] else {
-            throw ComposeError.missingField("x-apppod.healthcheck")
+        guard let hc = xContainerfy["healthcheck"] as? [String: Any] else {
+            throw ComposeError.missingField("x-containerfy.healthcheck")
         }
         guard let hcURL = hc["url"] as? String, !hcURL.isEmpty else {
-            throw ComposeError.missingField("x-apppod.healthcheck.url")
+            throw ComposeError.missingField("x-containerfy.healthcheck.url")
         }
         if let parsed = URL(string: hcURL), parsed.host != "127.0.0.1" {
-            throw ComposeError.invalidValue("x-apppod.healthcheck.url", hcURL, "must target 127.0.0.1")
+            throw ComposeError.invalidValue("x-containerfy.healthcheck.url", hcURL, "must target 127.0.0.1")
         }
 
         let healthCheck = HealthCheckConfig(
@@ -322,34 +322,34 @@ enum ComposeConfigParser {
 
     private static func parseVMConfig(_ vm: [String: Any]) throws -> (cpuMin: Int, cpuRec: Int, memMin: Int, memRec: Int, diskMB: Int) {
         guard let cpu = vm["cpu"] as? [String: Any] else {
-            throw ComposeError.missingField("x-apppod.vm.cpu")
+            throw ComposeError.missingField("x-containerfy.vm.cpu")
         }
         let cpuMin = toInt(cpu["min"])
         if cpuMin < 1 || cpuMin > 16 {
-            throw ComposeError.invalidValue("x-apppod.vm.cpu.min", "\(cpuMin)", "must be 1-16")
+            throw ComposeError.invalidValue("x-containerfy.vm.cpu.min", "\(cpuMin)", "must be 1-16")
         }
         var cpuRec = toInt(cpu["recommended"])
         if cpuRec == 0 { cpuRec = cpuMin }
         if cpuRec < cpuMin {
-            throw ComposeError.invalidValue("x-apppod.vm.cpu.recommended", "\(cpuRec)", "must be >= min (\(cpuMin))")
+            throw ComposeError.invalidValue("x-containerfy.vm.cpu.recommended", "\(cpuRec)", "must be >= min (\(cpuMin))")
         }
 
         guard let mem = vm["memory_mb"] as? [String: Any] else {
-            throw ComposeError.missingField("x-apppod.vm.memory_mb")
+            throw ComposeError.missingField("x-containerfy.vm.memory_mb")
         }
         let memMin = toInt(mem["min"])
         if memMin < 512 || memMin > 32768 {
-            throw ComposeError.invalidValue("x-apppod.vm.memory_mb.min", "\(memMin)", "must be 512-32768")
+            throw ComposeError.invalidValue("x-containerfy.vm.memory_mb.min", "\(memMin)", "must be 512-32768")
         }
         var memRec = toInt(mem["recommended"])
         if memRec == 0 { memRec = memMin }
         if memRec < memMin {
-            throw ComposeError.invalidValue("x-apppod.vm.memory_mb.recommended", "\(memRec)", "must be >= min (\(memMin))")
+            throw ComposeError.invalidValue("x-containerfy.vm.memory_mb.recommended", "\(memRec)", "must be >= min (\(memMin))")
         }
 
         let diskMB = toInt(vm["disk_mb"])
         if diskMB < 1024 {
-            throw ComposeError.invalidValue("x-apppod.vm.disk_mb", "\(diskMB)", "must be >= 1024")
+            throw ComposeError.invalidValue("x-containerfy.vm.disk_mb", "\(diskMB)", "must be >= 1024")
         }
 
         return (cpuMin, cpuRec, memMin, memRec, diskMB)
@@ -489,8 +489,8 @@ enum ComposeConfigParser {
     }
 
     private static func parseHealthCheck(from root: [String: Any]) -> HealthCheckConfig? {
-        guard let xApppod = root["x-apppod"] as? [String: Any],
-              let hc = xApppod["healthcheck"] as? [String: Any],
+        guard let xContainerfy = root["x-containerfy"] as? [String: Any],
+              let hc = xContainerfy["healthcheck"] as? [String: Any],
               let url = hc["url"] as? String else { return nil }
 
         return HealthCheckConfig(
@@ -502,8 +502,8 @@ enum ComposeConfigParser {
     }
 
     private static func parseDisplayName(from root: [String: Any]) -> String? {
-        guard let xApppod = root["x-apppod"] as? [String: Any] else { return nil }
-        return (xApppod["display_name"] as? String) ?? (xApppod["name"] as? String)
+        guard let xContainerfy = root["x-containerfy"] as? [String: Any] else { return nil }
+        return (xContainerfy["display_name"] as? String) ?? (xContainerfy["name"] as? String)
     }
 
     private static func asUInt16(_ value: Any) -> UInt16? {

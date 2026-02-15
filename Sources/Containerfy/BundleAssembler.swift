@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Layout:
 ///   <name>.app/Contents/
-///   +-- MacOS/AppPod
+///   +-- MacOS/Containerfy
 ///   +-- Resources/
 ///   |   +-- docker-compose.yml
 ///   |   +-- *.env
@@ -83,7 +83,7 @@ enum BundleAssembler {
         try plist.write(toFile: plistPath, atomically: true, encoding: .utf8)
 
         // Copy current binary as the app binary
-        let binaryDst = (macosDir as NSString).appendingPathComponent("AppPod")
+        let binaryDst = (macosDir as NSString).appendingPathComponent("Containerfy")
         let binarySrc = findBinary()
 
         if let src = binarySrc {
@@ -91,7 +91,7 @@ enum BundleAssembler {
             // Ensure executable
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binaryDst)
         } else {
-            print("  Warning: AppPod binary not found — bundle needs manual binary placement at:")
+            print("  Warning: Containerfy binary not found — bundle needs manual binary placement at:")
             print("  \(binaryDst)")
         }
 
@@ -109,10 +109,10 @@ enum BundleAssembler {
 
         // Fallback locations
         let candidates = [
-            "AppPod",
-            "AppPod.app/Contents/MacOS/AppPod",
-            ".build/release/AppPod",
-            ".build/debug/AppPod",
+            "Containerfy",
+            "Containerfy.app/Contents/MacOS/Containerfy",
+            ".build/release/Containerfy",
+            ".build/debug/Containerfy",
         ]
         for c in candidates {
             if FileManager.default.fileExists(atPath: c) {
@@ -125,11 +125,11 @@ enum BundleAssembler {
     // MARK: - Info.plist Generation
 
     private static func generateInfoPlist(config: ComposeConfig) -> String {
-        let name = config.name ?? "AppPod"
+        let name = config.name ?? "Containerfy"
         let version = config.version ?? "1.0.0"
         let displayName = config.displayName ?? titleCase(name)
 
-        var bundleID = config.identifier ?? "com.apppod.\(name)"
+        var bundleID = config.identifier ?? "com.containerfy.\(name)"
         if !bundleID.contains(".") {
             bundleID = bundleID.replacingOccurrences(of: "/", with: ".")
         }
@@ -146,7 +146,7 @@ enum BundleAssembler {
         \t<key>CFBundleDisplayName</key>
         \t<string>\(displayName)</string>
         \t<key>CFBundleExecutable</key>
-        \t<string>AppPod</string>
+        \t<string>Containerfy</string>
         \t<key>CFBundleVersion</key>
         \t<string>\(version)</string>
         \t<key>CFBundleShortVersionString</key>
@@ -160,7 +160,7 @@ enum BundleAssembler {
         \t<key>LSMinimumSystemVersion</key>
         \t<string>14.0</string>
         \t<key>NSHumanReadableCopyright</key>
-        \t<string>Built with AppPod</string>
+        \t<string>Built with Containerfy</string>
         </dict>
         </plist>
         """

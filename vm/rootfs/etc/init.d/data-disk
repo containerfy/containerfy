@@ -5,7 +5,7 @@ description="Format and mount data disk (/dev/vdb)"
 depend() {
     before docker
     before vm-agent
-    before apppod-compose
+    before containerfy-compose
 }
 
 start() {

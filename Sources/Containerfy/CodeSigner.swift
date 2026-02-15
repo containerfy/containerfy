@@ -35,7 +35,7 @@ enum CodeSigner {
 
         // 4. Create DMG
         onProgress("Creating DMG...")
-        let stagingDir = NSTemporaryDirectory() + "apppod-dmg-\(ProcessInfo.processInfo.globallyUniqueString)"
+        let stagingDir = NSTemporaryDirectory() + "containerfy-dmg-\(ProcessInfo.processInfo.globallyUniqueString)"
         let fm = FileManager.default
         try fm.createDirectory(atPath: stagingDir, withIntermediateDirectories: true)
         defer { try? fm.removeItem(atPath: stagingDir) }

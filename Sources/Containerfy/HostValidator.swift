@@ -14,12 +14,12 @@ enum HostValidator {
 
         // Hard fail: wrong architecture (must be arm64)
         #if !arch(arm64)
-        errors.append("AppPod requires Apple Silicon (arm64)")
+        errors.append("Containerfy requires Apple Silicon (arm64)")
         #endif
 
         // Hard fail: macOS version < 14
         if ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 14 {
-            errors.append("AppPod requires macOS 14 (Sonoma) or later")
+            errors.append("Containerfy requires macOS 14 (Sonoma) or later")
         }
 
         // Hard fail: insufficient physical memory (< 2 GB)

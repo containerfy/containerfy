@@ -1,8 +1,8 @@
-# AppPod Architecture
+# Containerfy Architecture
 
 An open-source tool that packages a Docker Compose application into a native macOS menu bar app with an embedded Linux VM. One-click install for end users — no Docker knowledge, no container runtime on the host.
 
-The developer's only input is a single `docker-compose.yml` with an `x-apppod` extension block. No separate manifest file.
+The developer's only input is a single `docker-compose.yml` with an `x-containerfy` extension block. No separate manifest file.
 
 ## Architecture
 
@@ -58,13 +58,13 @@ The developer's only input is a single `docker-compose.yml` with an `x-apppod` e
 │  ~/Library/Application Support/<AppName>/                        │
 │    ├── vm-root.img       (copy of base image)                    │
 │    ├── vm-data.img       (persistent data partition)             │
-│    └── apppod.log                                                │
+│    └── containerfy.log                                                │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 **Key constraint:** The macOS app does NOT implement container tooling. The VM is a self-contained appliance. The app only manages VM lifecycle, health checks, port forwarding, and UX.
 
-**Unified binary:** The same Swift binary serves as both the developer CLI (`apppod pack`) and the end-user GUI app (menu bar). CLI mode is activated when `pack` is the first argument; otherwise the GUI launches. The VM base image serves dual roles: build environment (CLI boots it, Docker inside pulls images, creates ext4) and runtime environment (end user's .app boots it with images pre-loaded).
+**Unified binary:** The same Swift binary serves as both the developer CLI (`containerfy pack`) and the end-user GUI app (menu bar). CLI mode is activated when `pack` is the first argument; otherwise the GUI launches. The VM base image serves dual roles: build environment (CLI boots it, Docker inside pulls images, creates ext4) and runtime environment (end user's .app boots it with images pre-loaded).
 
 **Key networking decision:** vsock for all host↔VM communication. No NAT IP discovery, no firewall issues. The VM's NAT adapter exists solely for outbound internet from containers.
 
@@ -74,7 +74,7 @@ The developer's only input is a single `docker-compose.yml` with an `x-apppod` e
 
 ### Swift Menu Bar App (generic binary)
 
-The same compiled `.app` binary is used for every appliance. It reads `docker-compose.yml` from its own `Contents/Resources/` at runtime, parses the `x-apppod` block and service definitions to determine behavior: app name, menu items, port forwarding, health checks, etc.
+The same compiled `.app` binary is used for every appliance. It reads `docker-compose.yml` from its own `Contents/Resources/` at runtime, parses the `x-containerfy` block and service definitions to determine behavior: app name, menu items, port forwarding, health checks, etc.
 
 | Aspect | Decision |
 |---|---|
@@ -83,7 +83,7 @@ The same compiled `.app` binary is used for every appliance. It reads `docker-co
 | Entitlements | `com.apple.security.virtualization`, `com.apple.security.hypervisor` |
 | Hardened Runtime | Required — `--options runtime` for notarized builds |
 | Sandbox | No — Virtualization.framework requires unsandboxed execution |
-| Distribution | Signed `.app` in `.dmg`, notarized via `apppod pack`, not App Store |
+| Distribution | Signed `.app` in `.dmg`, notarized via `containerfy pack`, not App Store |
 
 **State machine:**
 
@@ -108,7 +108,7 @@ All transitions are `@MainActor`-isolated. `VZVirtualMachineDelegate` callbacks 
 - Restart / Stop / View Logs / Preferences / Quit (Quit = Stop VM + exit)
 
 **VM lifecycle manager** wraps `VZVirtualMachine`:
-- Creates VM config from `x-apppod` block (CPU, memory, disks, vsock, NAT)
+- Creates VM config from `x-containerfy` block (CPU, memory, disks, vsock, NAT)
 - First launch: decompresses root image, creates data image
 - Subsequent launches: reuses existing disk images
 - Graceful shutdown: vsock SHUTDOWN → ACPI poweroff → force kill after timeout
@@ -136,19 +136,19 @@ All transitions are `@MainActor`-isolated. `VZVirtualMachineDelegate` callbacks 
 - 3 consecutive failures → Error state
 - Periodic `DISK` query — menu bar warning when data disk exceeds ~90% usage
 
-### Swift CLI (`apppod pack`) — Developer-Facing
+### Swift CLI (`containerfy pack`) — Developer-Facing
 
-The same Swift binary serves dual roles: CLI tool for developers and GUI app for end users. When invoked with `apppod pack`, it runs in CLI mode (no NSApplication). Otherwise it launches the menu bar GUI.
+The same Swift binary serves dual roles: CLI tool for developers and GUI app for end users. When invoked with `containerfy pack`, it runs in CLI mode (no NSApplication). Otherwise it launches the menu bar GUI.
 
 ```
-apppod pack \
+containerfy pack \
   --compose ./docker-compose.yml \
   --output ./MyApp \
   --signed myprofile
 ```
 
 What it does:
-1. Parses `docker-compose.yml` — validates `x-apppod` block, rejects hard-rejected keywords (see Compose Passthrough Model)
+1. Parses `docker-compose.yml` — validates `x-containerfy` block, rejects hard-rejected keywords (see Compose Passthrough Model)
 2. Boots the pre-built VM base image using Virtualization.framework
 3. Docker inside the VM pulls all referenced images (`--platform linux/arm64`)
 4. VM agent creates ext4 root image from its own rootfs + pulled images, shrinks (`resize2fs -M`), compresses with lz4
@@ -158,23 +158,23 @@ What it does:
 
 **Build requirements:**
 - No Docker required on the developer's machine. The VM has Docker embedded.
-- VM base image must be installed at `~/.apppod/base/` (installed via `install.sh` or Homebrew)
+- VM base image must be installed at `~/.containerfy/base/` (installed via `install.sh` or Homebrew)
 - Xcode Command Line Tools (`xcode-select --install`) for signing and notarization (only needed with `--signed`). Free.
 - Apple Developer account ($99/year) for the signing certificate (only needed with `--signed`). Required for notarized distribution — unsigned apps are blocked by Gatekeeper.
 
 **Installation:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/containerly/apppod/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/containerly/containerfy/main/install.sh | bash
 ```
 
-This downloads the binary to `/usr/local/bin/apppod` and the VM base image to `~/.apppod/base/`.
+This downloads the binary to `/usr/local/bin/containerfy` and the VM base image to `~/.containerfy/base/`.
 
 **The .app bundle layout produced by the CLI:**
 ```
 MyApp.app/Contents/
-├── MacOS/AppPod              # Generic Swift binary (same for all appliances)
+├── MacOS/Containerfy              # Generic Swift binary (same for all appliances)
 ├── Resources/
-│   ├── docker-compose.yml    # Compose file (includes x-apppod config)
+│   ├── docker-compose.yml    # Compose file (includes x-containerfy config)
 │   ├── *.env                 # Any env files referenced by env_file: (if present)
 │   ├── vmlinuz-lts           # Linux kernel
 │   ├── initramfs-lts         # Initramfs
@@ -187,13 +187,13 @@ Entitlements are embedded in the code signature at build time, not shipped as a 
 ### CLI Reference
 
 ```
-apppod pack [flags]
+containerfy pack [flags]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--compose` | `./docker-compose.yml` | Path to compose file |
-| `--output` | `./<name>` (from `x-apppod.name`) | Output path (produces `.app` or `.app` + `.dmg`) |
+| `--output` | `./<name>` (from `x-containerfy.name`) | Output path (produces `.app` or `.app` + `.dmg`) |
 | `--signed <keychain-profile>` | | Sign `.app`, create `.dmg`, notarize, and staple. Requires a Developer ID certificate. |
 
 **Unsigned build** (default): produces `.app` only. No signing, no `.dmg`. Useful for local testing. End users will see a Gatekeeper warning.
@@ -208,7 +208,7 @@ xcrun notarytool store-credentials <profile-name>
 ```
 
 ```
-apppod --help
+containerfy --help
 ```
 
 Shows available commands. With no arguments, launches the GUI menu bar app.
@@ -251,7 +251,7 @@ Log rotation prevents unbounded growth on the data partition. `live-restore: fal
 → PACK            ← PACK_START, PACK_STEP:<step>, PACK_DONE
 ```
 
-BUILD and PACK are used during `apppod pack` (build mode). BUILD pulls images into Docker inside the VM. PACK creates the ext4 root image from the running VM's filesystem + pulled images, shrinks and compresses it, then writes artifacts to the VirtIO shared output directory.
+BUILD and PACK are used during `containerfy pack` (build mode). BUILD pulls images into Docker inside the VM. PACK creates the ext4 root image from the running VM's filesystem + pulled images, shrinks and compresses it, then writes artifacts to the VirtIO shared output directory.
 
 **Boot sequence inside VM** (OpenRC dependency chain):
 1. Mount root and data partitions, fsck
@@ -263,16 +263,16 @@ OpenRC dependency chain: `mount /data` → `dockerd` → `vm-agent` (which runs 
 
 ---
 
-## `docker-compose.yml` with `x-apppod`
+## `docker-compose.yml` with `x-containerfy`
 
-All AppPod configuration lives inside the compose file using the standard `x-` extension mechanism. The compose file remains fully valid — `docker compose up` still works locally for development.
+All Containerfy configuration lives inside the compose file using the standard `x-` extension mechanism. The compose file remains fully valid — `docker compose up` still works locally for development.
 
 ### Example: Paperless-ngx
 
 A self-hosted document management system with OCR. Five services, but only the web UI is user-facing — the rest communicate internally over the compose network.
 
 ```yaml
-x-apppod:
+x-containerfy:
   name: "paperless"
   version: "2.14.0"
   identifier: "github.com/paperless-ngx/paperless-ngx"
@@ -347,10 +347,10 @@ Services with `ports:` automatically become "Open" menu items:
 
 **Only expose ports for services the end user should see.** Internal services (databases, caches, queues) talk to each other by service name — no `ports:` needed, no port conflicts possible.
 
-### `x-apppod` field reference
+### `x-containerfy` field reference
 
 ```yaml
-x-apppod:
+x-containerfy:
   name: "my-app"                     # [REQUIRED] string, 1-64 chars, [a-zA-Z0-9-]
   version: "1.0.0"                   # [REQUIRED] semver
   identifier: "com.example.myapp"    # [REQUIRED] unique ID (reverse-DNS, GitHub URL, etc.)
@@ -373,7 +373,7 @@ x-apppod:
     startup_timeout_seconds: 120     # [OPTIONAL] 30-600, default: 120
 ```
 
-**Validation rules** (enforced by `apppod pack` at build time):
+**Validation rules** (enforced by `containerfy pack` at build time):
 
 | Field | Constraint |
 |---|---|
@@ -393,18 +393,18 @@ x-apppod:
 
 ## Compose Passthrough Model
 
-AppPod passes the compose file to `docker compose up` inside the VM **unchanged**. The file is not rewritten, templated, or subset-filtered.
+Containerfy passes the compose file to `docker compose up` inside the VM **unchanged**. The file is not rewritten, templated, or subset-filtered.
 
-**AppPod only parses these fields** (everything else is ignored and passed through):
+**Containerfy only parses these fields** (everything else is ignored and passed through):
 
-| Field | Why AppPod reads it |
+| Field | Why Containerfy reads it |
 |---|---|
 | `services[*].image` | Preload images into root disk at build time (no pull at runtime) |
 | `services[*].ports` | Set up vsock↔TCP port forwarding on the host; generate menu items |
 | Top-level `volumes` | Provision named volumes on the persistent data disk |
 | `services[*].env_file` | Bundle referenced `.env` files into root image alongside compose file |
 
-**Hard-rejected keywords** (caught by `apppod pack` at build time):
+**Hard-rejected keywords** (caught by `containerfy pack` at build time):
 
 | Keyword | Reason |
 |---|---|
@@ -413,7 +413,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | `extends:` | Requires resolving external files that may not be bundled. |
 | `profiles:` | All services in the file are always started. No partial-stack support in v1. |
 | `network_mode: host` | Service binds to VM network, invisible to vsock port forwarder. Breaks silently. |
-| `env_file:` without bundled files | References must resolve inside VM. `apppod pack` bundles referenced env files automatically; rejects if file not found. |
+| `env_file:` without bundled files | References must resolve inside VM. `containerfy pack` bundles referenced env files automatically; rejects if file not found. |
 
 **Everything else passes through** — `command`, `entrypoint`, `depends_on`, `restart`, `networks`, `configs`, `secrets`, `labels`, `healthcheck`, `deploy`, `logging`, `cap_add`, `privileged`, `user`, `working_dir`, `stdin_open`, `tty`, etc. If Docker Compose supports it, it works.
 
@@ -426,7 +426,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 - Single appliance per `.app` (1:1)
 - Docker Engine + Compose v2 in VM
 - Full Docker Compose passthrough — all features work except: `build:`, bind mount volumes, `extends:`, `profiles:`
-- All config in one `docker-compose.yml` via `x-apppod` extension
+- All config in one `docker-compose.yml` via `x-containerfy` extension
 - Menu items auto-generated from services with `ports:`
 - vsock port forwarding, HTTP health polling
 - Menu bar: status icon, Open (per exposed service), Restart, Stop, Logs, Quit
@@ -470,7 +470,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Config format | `x-apppod` in `docker-compose.yml` | Single file. Standard compose extension mechanism. File stays valid for local `docker compose up`. |
+| Config format | `x-containerfy` in `docker-compose.yml` | Single file. Standard compose extension mechanism. File stays valid for local `docker compose up`. |
 | Container runtime in VM | Docker Engine + Compose v2 | Compose compatibility. VM is opaque — Docker overhead is irrelevant. |
 | Host↔VM communication | vsock exclusively | Deterministic. No NAT IP discovery, no DNS, no firewall. Works identically on every Mac. |
 | Storage model | Dual-disk (root + data) | Root is replaceable on update. Data survives. Most important decision for maintainability. |
@@ -478,11 +478,11 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | Menu item generation | Auto from services with `ports:` | Zero config. Service name = label. Encourages clean appliance design (don't expose internal services). |
 | Control protocol | Line-based text over vsock | No serialization deps. Readable with socat for debugging. |
 | macOS app language | Swift, AppKit NSStatusItem | Native menu bar control. No SwiftUI quirks. |
-| CLI language | Swift (unified binary) | Same binary for CLI (`apppod pack`) and GUI. One language, one toolchain. VM-based build eliminates Docker requirement. |
+| CLI language | Swift (unified binary) | Same binary for CLI (`containerfy pack`) and GUI. One language, one toolchain. VM-based build eliminates Docker requirement. |
 | Build system (Swift) | SPM, no .xcodeproj | Merge-friendly, scriptable, CI-native. |
 | Compression | lz4 | 3x faster decompression than gzip. Acceptable size tradeoff for first-launch UX. |
 | Min macOS | 14.0 | VM pause/resume for sleep/wake, stable vsock, mature Virtualization.framework. 13 lacks clean suspend and isn't worth the workarounds. |
-| Compose passthrough | Pass full compose file to Docker Compose in VM | Avoids fragile allowlist. Only parse what AppPod needs (images, ports, volumes). Reject only what can't work. |
+| Compose passthrough | Pass full compose file to Docker Compose in VM | Avoids fragile allowlist. Only parse what Containerfy needs (images, ports, volumes). Reject only what can't work. |
 
 ---
 
@@ -496,5 +496,5 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | **Volume disk growth** | Alert user at threshold (~90%); no auto-resize | VM agent monitors disk usage and reports via control protocol. Menu bar shows warning. No runtime resize complexity. Developer sets `disk_mb` conservatively. |
 | **Log streaming** | Batch-fetch only in v1 (`LOGS:<lines>` → response) | Logs window shows recent lines, refreshes on demand or timer. Real-time tailing deferred to v2. |
 | **Quit vs Stop** | Quit = Stop VM + exit process | Simpler model. No "app running with VM stopped" state. Fewer states to manage. |
-| **`env_file:` handling** | `apppod pack` bundles referenced env files into root image | Common in real-world compose files. Silent runtime failure if missing. Reject at pack time if file not found. |
+| **`env_file:` handling** | `containerfy pack` bundles referenced env files into root image | Common in real-world compose files. Silent runtime failure if missing. Reject at pack time if file not found. |
 | **Control protocol scope** | HEALTH, DISK, LOGS, SHUTDOWN for runtime; BUILD, PACK for build mode | Add VERSION/STATUS/RESTART in v2 if needed. Avoids speculative complexity. |

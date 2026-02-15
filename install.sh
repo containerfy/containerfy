@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-# AppPod installer — downloads the latest release binary and VM base image.
+# Containerfy installer — downloads the latest release binary and VM base image.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/containerly/apppod/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/containerly/containerfy/main/install.sh | bash
 
-REPO="containerly/apppod"
+REPO="containerly/containerfy"
 INSTALL_DIR="/usr/local/bin"
-BASE_DIR="$HOME/.apppod/base"
+BASE_DIR="$HOME/.containerfy/base"
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
 error() { printf '\033[1;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
@@ -16,13 +16,13 @@ error() { printf '\033[1;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
 # Check architecture
 ARCH=$(uname -m)
 if [ "$ARCH" != "arm64" ]; then
-    error "AppPod requires Apple Silicon (arm64). Detected: $ARCH"
+    error "Containerfy requires Apple Silicon (arm64). Detected: $ARCH"
 fi
 
 # Check macOS
 OS=$(uname -s)
 if [ "$OS" != "Darwin" ]; then
-    error "AppPod requires macOS. Detected: $OS"
+    error "Containerfy requires macOS. Detected: $OS"
 fi
 
 # Determine latest release tag
@@ -36,19 +36,19 @@ info "Latest release: $LATEST"
 RELEASE_URL="https://github.com/$REPO/releases/download/$LATEST"
 
 # Download binary
-info "Downloading apppod binary..."
+info "Downloading containerfy binary..."
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-curl -fsSL "$RELEASE_URL/apppod-darwin-arm64" -o "$TMP_DIR/apppod"
-chmod +x "$TMP_DIR/apppod"
+curl -fsSL "$RELEASE_URL/containerfy-darwin-arm64" -o "$TMP_DIR/containerfy"
+chmod +x "$TMP_DIR/containerfy"
 
 # Install binary
-info "Installing to $INSTALL_DIR/apppod..."
+info "Installing to $INSTALL_DIR/containerfy..."
 if [ -w "$INSTALL_DIR" ]; then
-    cp "$TMP_DIR/apppod" "$INSTALL_DIR/apppod"
+    cp "$TMP_DIR/containerfy" "$INSTALL_DIR/containerfy"
 else
-    sudo cp "$TMP_DIR/apppod" "$INSTALL_DIR/apppod"
+    sudo cp "$TMP_DIR/containerfy" "$INSTALL_DIR/containerfy"
 fi
 
 # Download VM base artifacts
@@ -62,18 +62,18 @@ done
 
 # Verify installation
 info "Verifying installation..."
-if command -v apppod >/dev/null 2>&1; then
+if command -v containerfy >/dev/null 2>&1; then
     info "Installation complete!"
     echo ""
-    echo "  Binary:     $INSTALL_DIR/apppod"
+    echo "  Binary:     $INSTALL_DIR/containerfy"
     echo "  VM base:    $BASE_DIR/"
     echo ""
-    echo "  Usage:      apppod pack --compose ./docker-compose.yml"
-    echo "  Help:       apppod --help"
+    echo "  Usage:      containerfy pack --compose ./docker-compose.yml"
+    echo "  Help:       containerfy --help"
     echo ""
 else
     echo ""
-    echo "Binary installed to $INSTALL_DIR/apppod"
+    echo "Binary installed to $INSTALL_DIR/containerfy"
     echo "Make sure $INSTALL_DIR is in your PATH."
     echo ""
 fi

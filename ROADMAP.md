@@ -1,4 +1,4 @@
-# AppPod Roadmap
+# Containerfy Roadmap
 
 Each phase is a shippable checkpoint. Phases 0-3 built the Swift app. Phase 4 added a Go CLI (now superseded). Phase 5 unified everything into a single Swift binary. Phases 6-7 follow.
 
@@ -45,11 +45,11 @@ Full dynamic menu bar driven by the compose file.
 - [x] Preferences: launch at login
 - [x] Remove App Data menu item (cleanup `~/Library/Application Support/<AppName>/`)
 
-## Phase 4 — Go CLI (`apppod pack`) ✅ *(superseded by Phase 5)*
+## Phase 4 — Go CLI (`containerfy pack`) ✅ *(superseded by Phase 5)*
 
 Developer-facing CLI that produces a distributable `.app` bundle. Go CLI and `cli/` directory removed in Phase 5.
 
-- [x] Compose parser: validate `x-apppod`, reject hard-rejected keywords
+- [x] Compose parser: validate `x-containerfy`, reject hard-rejected keywords
 - [x] Builder container Dockerfile (Alpine arm64 + Docker-in-Docker)
 - [x] ext4 creation script: Alpine bootstrap + Docker Engine + packages
 - [x] Image preloading via Docker-in-Docker (pull directly into root filesystem)
@@ -72,8 +72,8 @@ Eliminate Go CLI and Docker requirement. One Swift binary, one command.
 
 - [x] CI workflow: build VM base image + Swift binary, publish as GitHub release
 - [x] Install script (curl | bash) for developer setup
-- [x] CLI mode in Swift binary (`apppod pack` via argv detection)
-- [x] Extend ComposeConfig.swift with build-time validation (x-apppod, images, env_files, hard-reject keywords)
+- [x] CLI mode in Swift binary (`containerfy pack` via argv detection)
+- [x] Extend ComposeConfig.swift with build-time validation (x-containerfy, images, env_files, hard-reject keywords)
 - [x] VM-based builder: boot VM via Virtualization.framework, pull images inside, create ext4 via shared directories
 - [x] .app bundle assembly in Swift (port from Go bundle.go)
 - [x] VM agent: BUILD + PACK command handlers, VirtIO shared directory mounting
@@ -100,7 +100,7 @@ Production readiness and end-to-end validation.
 
 - [ ] Crash recovery (detect stale state file, offer reset)
 - [ ] Memory pressure / OOM handling
-- [ ] End-to-end test: `apppod pack` → launch → health → open → stop
+- [ ] End-to-end test: `containerfy pack` → launch → health → open → stop
 
 ---
 

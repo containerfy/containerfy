@@ -3,7 +3,7 @@ import Foundation
 /// CLI `pack` command — orchestrates compose validation, VM-based build, .app assembly,
 /// and optional signing + notarization.
 ///
-/// Usage: apppod pack [--compose <path>] [--output <path>] [--signed <keychain-profile>]
+/// Usage: containerfy pack [--compose <path>] [--output <path>] [--signed <keychain-profile>]
 enum PackCommand {
 
     static func run(arguments: [String]) async {
@@ -57,7 +57,7 @@ enum PackCommand {
             exit(1)
         }
 
-        let name = config.name ?? "AppPod"
+        let name = config.name ?? "Containerfy"
         let version = config.version ?? "1.0.0"
         let identifier = config.identifier ?? "unknown"
 
@@ -72,14 +72,14 @@ enum PackCommand {
         let fm = FileManager.default
         guard fm.fileExists(atPath: VMBuilder.baseImagePath) else {
             printError("VM base image not found at \(VMBuilder.baseDir)")
-            printError("Run the install script to download base images, or check ~/.apppod/base/")
+            printError("Run the install script to download base images, or check ~/.containerfy/base/")
             exit(1)
         }
         print("    Base image: \(VMBuilder.baseDir)")
 
         // Prepare workspace directory with compose file and env files
-        let workspaceDir = NSTemporaryDirectory() + "apppod-workspace-\(ProcessInfo.processInfo.globallyUniqueString)"
-        let artifactDir = NSTemporaryDirectory() + "apppod-artifacts-\(ProcessInfo.processInfo.globallyUniqueString)"
+        let workspaceDir = NSTemporaryDirectory() + "containerfy-workspace-\(ProcessInfo.processInfo.globallyUniqueString)"
+        let artifactDir = NSTemporaryDirectory() + "containerfy-artifacts-\(ProcessInfo.processInfo.globallyUniqueString)"
 
         do {
             try fm.createDirectory(atPath: workspaceDir, withIntermediateDirectories: true)
@@ -164,7 +164,7 @@ enum PackCommand {
             // Unsigned (default)
             print("Build complete (unsigned): \(appPath)")
             print("Note: Unsigned apps will trigger a Gatekeeper warning on end-user machines.")
-            print("      To sign and notarize: apppod pack --signed <keychain-profile>")
+            print("      To sign and notarize: containerfy pack --signed <keychain-profile>")
             print("      Set up credentials:   xcrun notarytool store-credentials <profile-name>")
         }
     }
@@ -182,14 +182,14 @@ enum PackCommand {
 
     private static func printUsage() {
         print("""
-        Usage: apppod pack [flags]
+        Usage: containerfy pack [flags]
 
         Build a distributable .app bundle from a docker-compose.yml.
         By default, produces an unsigned .app. Use --signed to sign, notarize, and create a .dmg.
 
         Flags:
           --compose <path>           Path to docker-compose.yml (default: ./docker-compose.yml)
-          --output <path>            Output path for .app bundle (default: ./<name> from x-apppod)
+          --output <path>            Output path for .app bundle (default: ./<name> from x-containerfy)
           --signed <keychain-profile>  Sign .app, create .dmg, notarize, and staple.
                                        Requires a Developer ID certificate and keychain profile.
                                        Set up credentials: xcrun notarytool store-credentials <name>

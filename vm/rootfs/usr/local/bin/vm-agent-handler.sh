@@ -5,8 +5,8 @@
 # Commands: HEALTH, SHUTDOWN, DISK, FORWARD:<vsock_port>:<target_port>, FORWARD-STOP, LOGS:<lines>
 # Build commands: BUILD:<image1>,<image2>,...  PACK
 
-COMPOSE_FILE="/etc/apppod/docker-compose.yml"
-PIDS_FILE="/tmp/apppod-forwards.pids"
+COMPOSE_FILE="/etc/containerfy/docker-compose.yml"
+PIDS_FILE="/tmp/containerfy-forwards.pids"
 WORKSPACE="/mnt/workspace"
 OUTPUT="/mnt/output"
 
@@ -120,21 +120,21 @@ while IFS= read -r line; do
                 / "$MOUNT/"
 
             # Install compose file and env files from workspace
-            mkdir -p "$MOUNT/etc/apppod"
+            mkdir -p "$MOUNT/etc/containerfy"
             if [ -f "$WORKSPACE/docker-compose.yml" ]; then
-                cp "$WORKSPACE/docker-compose.yml" "$MOUNT/etc/apppod/"
+                cp "$WORKSPACE/docker-compose.yml" "$MOUNT/etc/containerfy/"
                 printf 'PACK_STEP:installed compose file\n'
             fi
             for f in "$WORKSPACE"/*.env; do
-                [ -f "$f" ] && cp "$f" "$MOUNT/etc/apppod/"
+                [ -f "$f" ] && cp "$f" "$MOUNT/etc/containerfy/"
             done
 
             # Save pulled images as tars for preloading on first boot
-            mkdir -p "$MOUNT/var/cache/apppod/images"
+            mkdir -p "$MOUNT/var/cache/containerfy/images"
             for image in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>'); do
                 tarname=$(printf '%s' "$image" | tr '/:.' '_')
                 printf 'PACK_STEP:saving %s\n' "$image"
-                docker save -o "$MOUNT/var/cache/apppod/images/${tarname}.tar" "$image" 2>/dev/null
+                docker save -o "$MOUNT/var/cache/containerfy/images/${tarname}.tar" "$image" 2>/dev/null
             done
 
             umount "$MOUNT"

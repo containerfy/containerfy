@@ -1,6 +1,6 @@
-# AppPod — Project Context
+# Containerfy — Project Context
 
-AppPod packages a Docker Compose application into a native macOS menu bar app with an embedded Linux VM. One-click install for end users — no Docker knowledge required.
+Containerfy packages a Docker Compose application into a native macOS menu bar app with an embedded Linux VM. One-click install for end users — no Docker knowledge required.
 
 ## Repo Structure
 
@@ -8,7 +8,7 @@ AppPod packages a Docker Compose application into a native macOS menu bar app wi
 ARCHITECTURE.md   — Design decisions, component specs, locked decisions
 ROADMAP.md        — Phased implementation plan with progress tracking
 CLAUDE.md         — This file: project context, expert roles, conventions
-Sources/AppPod/   — Swift source (19 files: GUI + CLI in one binary)
+Sources/Containerfy/   — Swift source (19 files: GUI + CLI in one binary)
 vm/               — VM base image build (Dockerfile, rootfs, build-image.sh)
 Resources/        — Entitlements.plist
 Package.swift     — SPM config

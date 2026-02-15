@@ -11,7 +11,7 @@ final class PortForwarder {
     private let portMappings: [PortMapping]
     private var listeners: [UInt16: NWListener] = [:]
     private var bridges: [UUID: ConnectionBridge] = [:]
-    private let queue = DispatchQueue(label: "com.apppod.portforwarder", attributes: .concurrent)
+    private let queue = DispatchQueue(label: "com.containerfy.portforwarder", attributes: .concurrent)
     private var isRunning = false
 
     init(socketDevice: VZVirtioSocketDevice, portMappings: [PortMapping]) {
@@ -127,7 +127,7 @@ final class PortForwarder {
         vsockPort: UInt32
     ) {
         let bridgeID = UUID()
-        let bridgeQueue = DispatchQueue(label: "com.apppod.bridge.\(bridgeID.uuidString.prefix(8))")
+        let bridgeQueue = DispatchQueue(label: "com.containerfy.bridge.\(bridgeID.uuidString.prefix(8))")
 
         Task {
             do {

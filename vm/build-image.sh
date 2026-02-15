@@ -15,17 +15,17 @@ rsync -a /vm-rootfs/ $MOUNT/
 
 # Install compose + env files + image tars from workspace
 if [ -d /workspace ]; then
-    mkdir -p $MOUNT/etc/apppod
+    mkdir -p $MOUNT/etc/containerfy
     if [ -f /workspace/docker-compose.yml ]; then
-        cp /workspace/docker-compose.yml $MOUNT/etc/apppod/
+        cp /workspace/docker-compose.yml $MOUNT/etc/containerfy/
         echo "Installed docker-compose.yml"
     fi
     for f in /workspace/*.env; do
-        [ -f "$f" ] && cp "$f" $MOUNT/etc/apppod/
+        [ -f "$f" ] && cp "$f" $MOUNT/etc/containerfy/
     done
     if [ -d /workspace/images ]; then
-        mkdir -p $MOUNT/var/cache/apppod/images
-        cp /workspace/images/*.tar $MOUNT/var/cache/apppod/images/
+        mkdir -p $MOUNT/var/cache/containerfy/images
+        cp /workspace/images/*.tar $MOUNT/var/cache/containerfy/images/
         echo "Installed $(ls /workspace/images/*.tar | wc -l) image tar(s)"
     fi
 fi

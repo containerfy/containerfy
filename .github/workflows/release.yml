@@ -26,13 +26,13 @@ jobs:
           docker buildx build \
             --platform linux/arm64 \
             --load \
-            -t apppod-builder \
+            -t containerfy-builder \
             vm/
 
       - name: Extract artifacts from builder
         run: |
           # Run the builder to produce artifacts
-          container_id=$(docker run --platform linux/arm64 --privileged -d apppod-builder)
+          container_id=$(docker run --platform linux/arm64 --privileged -d containerfy-builder)
           docker wait "$container_id"
 
           # Copy artifacts out
@@ -65,13 +65,13 @@ jobs:
           codesign -s - \
             --entitlements Resources/Entitlements.plist \
             --force \
-            .build/release/AppPod
+            .build/release/Containerfy
 
       - name: Prepare artifact
         run: |
           mkdir -p artifacts
-          cp .build/release/AppPod artifacts/apppod-darwin-arm64
-          chmod +x artifacts/apppod-darwin-arm64
+          cp .build/release/Containerfy artifacts/containerfy-darwin-arm64
+          chmod +x artifacts/containerfy-darwin-arm64
 
       - name: Upload Swift binary
         uses: actions/upload-artifact@v4
@@ -108,7 +108,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-assets/apppod-darwin-arm64
+            release-assets/containerfy-darwin-arm64
             release-assets/vm-base.img.lz4
             release-assets/vmlinuz-lts
             release-assets/initramfs-lts

@@ -31,10 +31,10 @@ enum VMBuilder {
         }
     }
 
-    /// Base image location: ~/.apppod/base/
+    /// Base image location: ~/.containerfy/base/
     static var baseDir: String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return (home as NSString).appendingPathComponent(".apppod/base")
+        return (home as NSString).appendingPathComponent(".containerfy/base")
     }
 
     static var baseImagePath: String { (baseDir as NSString).appendingPathComponent("vm-base.img.lz4") }
@@ -69,7 +69,7 @@ enum VMBuilder {
         }
 
         // Create temp directory for writable VM root copy
-        let tempDir = NSTemporaryDirectory() + "apppod-build-\(ProcessInfo.processInfo.globallyUniqueString)"
+        let tempDir = NSTemporaryDirectory() + "containerfy-build-\(ProcessInfo.processInfo.globallyUniqueString)"
         try fm.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
         defer { try? fm.removeItem(atPath: tempDir) }
 
