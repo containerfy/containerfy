@@ -175,4 +175,4 @@ Phases 0 through 6 are complete: VM lifecycle, port forwarding, health monitorin
 
 ## License
 
-TBD
+[Apache License 2.0](LICENSE)
