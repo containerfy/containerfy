@@ -164,7 +164,7 @@ What it does:
 
 **Installation:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/containerly/containerfy/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/containerfy/containerfy/main/install.sh | bash
 ```
 
 This downloads the binary to `/usr/local/bin/containerfy` and the VM base image to `~/.containerfy/base/`.
