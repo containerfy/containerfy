@@ -1,15 +1,16 @@
 import Foundation
 
-/// CLI `pack` command — orchestrates compose validation, VM-based build, and .app assembly.
+/// CLI `pack` command — orchestrates compose validation, VM-based build, .app assembly,
+/// and optional signing + notarization.
 ///
-/// Usage: apppod pack [--compose <path>] [--output <path>] [--unsigned]
+/// Usage: apppod pack [--compose <path>] [--output <path>] [--signed <keychain-profile>]
 enum PackCommand {
 
     static func run(arguments: [String]) async {
         // Parse flags
         var composePath = "./docker-compose.yml"
         var outputPath: String?
-        var unsigned = false
+        var signedProfile: String?
 
         var i = 0
         while i < arguments.count {
@@ -28,8 +29,13 @@ enum PackCommand {
                     exit(1)
                 }
                 outputPath = arguments[i]
-            case "--unsigned":
-                unsigned = true
+            case "--signed":
+                i += 1
+                guard i < arguments.count else {
+                    printError("--signed requires a keychain profile name")
+                    exit(1)
+                }
+                signedProfile = arguments[i]
             case "--help", "-h":
                 printUsage()
                 exit(0)
@@ -131,17 +137,35 @@ enum PackCommand {
             exit(1)
         }
 
-        // Done
+        let appPath = output.hasSuffix(".app") ? output : output + ".app"
         print("")
-        if unsigned {
-            let appPath = output.hasSuffix(".app") ? output : output + ".app"
-            print("Build complete (unsigned): \(appPath)")
-            print("Note: unsigned apps will show a Gatekeeper warning on end-user machines.")
+
+        if let profile = signedProfile {
+            // Signed build: sign → verify → DMG → notarize → staple
+            printStep(8, "Signing and packaging...")
+            do {
+                let outputDir = (appPath as NSString).deletingLastPathComponent
+                let dmgPath = try CodeSigner.signAndPackage(
+                    appPath: appPath,
+                    appName: name,
+                    outputDir: outputDir.isEmpty ? "." : outputDir,
+                    keychainProfile: profile,
+                    onProgress: { status in
+                        print("    \(status)")
+                    }
+                )
+                print("")
+                print("Build complete: \(dmgPath)")
+            } catch {
+                printError("Signing failed: \(error.localizedDescription)")
+                exit(1)
+            }
         } else {
-            let appPath = output.hasSuffix(".app") ? output : output + ".app"
-            print("Build complete: \(appPath)")
-            print("Note: signing and notarization will be available in a future release.")
-            print("      Use --unsigned to suppress this message.")
+            // Unsigned (default)
+            print("Build complete (unsigned): \(appPath)")
+            print("Note: Unsigned apps will trigger a Gatekeeper warning on end-user machines.")
+            print("      To sign and notarize: apppod pack --signed <keychain-profile>")
+            print("      Set up credentials:   xcrun notarytool store-credentials <profile-name>")
         }
     }
 
@@ -161,12 +185,15 @@ enum PackCommand {
         Usage: apppod pack [flags]
 
         Build a distributable .app bundle from a docker-compose.yml.
+        By default, produces an unsigned .app. Use --signed to sign, notarize, and create a .dmg.
 
         Flags:
-          --compose <path>    Path to docker-compose.yml (default: ./docker-compose.yml)
-          --output <path>     Output path for .app bundle (default: ./<name> from x-apppod)
-          --unsigned          Skip signing, notarization, and .dmg creation
-          --help, -h          Show this help message
+          --compose <path>           Path to docker-compose.yml (default: ./docker-compose.yml)
+          --output <path>            Output path for .app bundle (default: ./<name> from x-apppod)
+          --signed <keychain-profile>  Sign .app, create .dmg, notarize, and staple.
+                                       Requires a Developer ID certificate and keychain profile.
+                                       Set up credentials: xcrun notarytool store-credentials <name>
+          --help, -h                 Show this help message
         """)
     }
 }

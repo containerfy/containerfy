@@ -80,21 +80,19 @@ Eliminate Go CLI and Docker requirement. One Swift binary, one command.
 - [x] Remove Go CLI (cli/ directory), move VM files to vm/
 - [x] Update ARCHITECTURE.md for single-language architecture
 
-## Phase 6 — Signing + Distribution
+## Phase 6 — Signing + Distribution ✅
 
-Code signing, notarization, and DMG packaging.
+Single `--signed <keychain-profile>` flag. Auto-detects signing identity, signs `.app`, creates `.dmg`, notarizes, staples. Thin wrapper around Apple's standard CLI tools.
 
-- [ ] Interactive signing identity selection
-- [ ] codesign integration
-- [ ] Hardened Runtime (`--options runtime`, `--timestamp`)
-- [ ] Entitlements file with `com.apple.security.virtualization` + `com.apple.security.hypervisor`
-- [ ] Remove `com.apple.security.get-task-allow` from release builds
-- [ ] DMG creation (hdiutil)
-- [ ] Notarization submission + stapling
-- [ ] Notarization credential management (keychain profile default, env vars for CI)
-- [ ] Pre-submission validation (`codesign --verify` + `spctl --assess`)
-- [ ] Stapler retry with backoff (propagation delay)
-- [ ] `--unsigned` flag
+- [x] `--signed <keychain-profile>` flag (unsigned is the default)
+- [x] Auto-detect signing identity (`security find-identity`), prompt if multiple
+- [x] codesign with Hardened Runtime (`--options runtime`, `--timestamp`, `--deep`)
+- [x] Entitlements (`com.apple.security.virtualization` + `com.apple.security.hypervisor`)
+- [x] Signature verification (`codesign --verify --deep --strict`)
+- [x] DMG creation with Applications symlink (`hdiutil create -format UDZO`)
+- [x] DMG signing
+- [x] Notarization via keychain profile (`xcrun notarytool submit --wait`)
+- [x] Stapling (`xcrun stapler staple`, non-fatal on failure)
 
 ## Phase 7 — Polish + Hardening
 
@@ -108,6 +106,4 @@ Production readiness and end-to-end validation.
 
 ## Recommended Next Steps
 
-**Phase 6 (Signing + Distribution)** is the natural next phase — codesign, notarization, hardened runtime, and DMG packaging for distributable `.app` bundles.
-
-**Phase 7 (Polish + Hardening)** follows once signing is in place, providing end-to-end validation and crash recovery UX.
+**Phase 7 (Polish + Hardening)** is the natural next phase — crash recovery, memory pressure handling, and end-to-end validation now that signing and distribution are in place.

@@ -143,7 +143,8 @@ The same Swift binary serves dual roles: CLI tool for developers and GUI app for
 ```
 apppod pack \
   --compose ./docker-compose.yml \
-  --output ./MyApp
+  --output ./MyApp \
+  --signed myprofile
 ```
 
 What it does:
@@ -153,13 +154,13 @@ What it does:
 4. VM agent creates ext4 root image from its own rootfs + pulled images, shrinks (`resize2fs -M`), compresses with lz4
 5. Artifacts transferred to host via VirtIO shared directories
 6. Swift assembles the .app bundle: copies artifacts, compose file, env files, generates Info.plist, embeds itself as the app binary
-7. Future: signing and packaging (Phase 6)
+7. If `--signed`: signs `.app` with Hardened Runtime, creates `.dmg`, submits for notarization, staples ticket
 
 **Build requirements:**
 - No Docker required on the developer's machine. The VM has Docker embedded.
 - VM base image must be installed at `~/.apppod/base/` (installed via `install.sh` or Homebrew)
-- Xcode Command Line Tools (`xcode-select --install`) for signing and notarization. Free.
-- Apple Developer account ($99/year) for the signing certificate. Required for notarized distribution — unsigned apps are blocked by Gatekeeper.
+- Xcode Command Line Tools (`xcode-select --install`) for signing and notarization (only needed with `--signed`). Free.
+- Apple Developer account ($99/year) for the signing certificate (only needed with `--signed`). Required for notarized distribution — unsigned apps are blocked by Gatekeeper.
 
 **Installation:**
 ```bash
@@ -192,12 +193,19 @@ apppod pack [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--compose` | `./docker-compose.yml` | Path to compose file |
-| `--output` | `./<name>` (from `x-apppod.name`) | Output path (produces `.app` and `.dmg`) |
-| `--unsigned` | | Skip signing, notarization, and `.dmg` creation. Outputs `.app` only. |
+| `--output` | `./<name>` (from `x-apppod.name`) | Output path (produces `.app` or `.app` + `.dmg`) |
+| `--signed <keychain-profile>` | | Sign `.app`, create `.dmg`, notarize, and staple. Requires a Developer ID certificate. |
 
-**Signed build** (default): lists available identities, prompts developer to select one, signs `.app`, creates `.dmg`, submits for notarization, staples ticket. *(Phase 6)*
+**Unsigned build** (default): produces `.app` only. No signing, no `.dmg`. Useful for local testing. End users will see a Gatekeeper warning.
 
-**Unsigned build** (`--unsigned`): skips all signing. Useful for local testing. End users will see a Gatekeeper warning.
+**Signed build** (`--signed <profile>`): auto-detects Developer ID signing identity (prompts if multiple found), signs `.app` with Hardened Runtime and entitlements (`codesign --force --sign <hash> --options runtime --timestamp --deep`), verifies signature (`codesign --verify --deep --strict`), creates compressed `.dmg` with Applications symlink (`hdiutil create -format UDZO`), signs the `.dmg`, submits for notarization (`xcrun notarytool submit --keychain-profile <profile> --wait`), and staples the ticket (`xcrun stapler staple` — non-fatal on failure, Gatekeeper verifies online).
+
+**One-time credential setup:**
+```bash
+xcrun notarytool store-credentials <profile-name>
+# Prompts for Apple ID, team ID, and app-specific password
+# Credentials are stored in the macOS keychain
+```
 
 ```
 apppod --help
@@ -453,7 +461,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | **Memory pressure / OOM** — macOS jetsam kills VM | Data loss, app crash | Validate available memory before VM creation. Allocate conservatively. Detect jetsam via `VZVirtualMachineDelegate.guestDidStop` and surface clear error. |
 | **First-launch decompression** — 2-4 GB image takes 20-60s | User thinks app is hung | Show "Preparing first launch..." progress. Use lz4 (3x faster than gzip). Background thread with cancellation. |
 | **Download size** — .app bundle can be 500 MB - 2 GB | Friction for distribution | Alpine base (~150 MB with Docker). Advise developers to use slim images. lz4 compression. |
-| **Notarization dependency** — Apple's notarization service availability, processing delays, policy changes | Developers can't ship signed builds during outages | `--unsigned` flag for local testing. Notarization is async (Apple side) — CLI polls with timeout. Document manual `xcrun notarytool` fallback if automation fails. |
+| **Notarization dependency** — Apple's notarization service availability, processing delays, policy changes | Developers can't ship signed builds during outages | Default is unsigned — signing only runs with `--signed`. Notarization is async (Apple side) — CLI polls with timeout. Document manual `xcrun notarytool` fallback if automation fails. |
 | **Secrets visible in bundle** — environment variables in `docker-compose.yml` are readable inside the `.app` | Credentials exposed if bundle is shared or inspected | Document clearly: compose file is not encrypted. Advise developers to use runtime secret injection (container entrypoints that read from mounted volumes) rather than hardcoding secrets in environment variables. v2 scope for encrypted secrets support. |
 
 ---
