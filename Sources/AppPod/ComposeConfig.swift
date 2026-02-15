@@ -38,11 +38,34 @@ struct ComposeConfig: Sendable {
     let displayName: String?
     let services: [ServiceInfo]
 
+    // Build-time fields (populated by parseBuild, nil at runtime)
+    let name: String?
+    let version: String?
+    let identifier: String?
+    let icon: String?
+    let cpuMin: Int?
+    let cpuRecommended: Int?
+    let memoryMBMin: Int?
+    let memoryMBRecommended: Int?
+    let diskMB: Int?
+    let images: [String]
+    let envFiles: [String]
+    let composePath: String?
+    let composeDir: String?
+
     /// No compose file found — run with no port forwarding or health monitoring.
-    static let empty = ComposeConfig(portMappings: [], healthCheck: nil, displayName: nil, services: [])
+    static let empty = ComposeConfig(
+        portMappings: [], healthCheck: nil, displayName: nil, services: [],
+        name: nil, version: nil, identifier: nil, icon: nil,
+        cpuMin: nil, cpuRecommended: nil, memoryMBMin: nil, memoryMBRecommended: nil, diskMB: nil,
+        images: [], envFiles: [], composePath: nil, composeDir: nil
+    )
 }
 
 enum ComposeConfigParser {
+
+    // MARK: - Runtime loading (GUI mode)
+
     /// Loads and parses the compose file, checking bundle first then Application Support.
     static func load() -> ComposeConfig {
         let url: URL
@@ -66,6 +89,7 @@ enum ComposeConfigParser {
         }
     }
 
+    /// Runtime parse — extracts ports, healthcheck, displayName. Lenient.
     static func parse(yaml: String) throws -> ComposeConfig {
         guard let root = try Yams.load(yaml: yaml) as? [String: Any] else {
             throw ComposeError.invalidFormat
@@ -89,11 +113,294 @@ enum ComposeConfigParser {
             portMappings: portMappings,
             healthCheck: healthCheck,
             displayName: displayName,
-            services: services
+            services: services,
+            name: nil, version: nil, identifier: nil, icon: nil,
+            cpuMin: nil, cpuRecommended: nil, memoryMBMin: nil, memoryMBRecommended: nil, diskMB: nil,
+            images: [], envFiles: [], composePath: nil, composeDir: nil
         )
     }
 
-    // MARK: - Private Parsers
+    // MARK: - Build-time parsing (CLI mode)
+
+    private static let nameRegex = try! NSRegularExpression(pattern: #"^[a-zA-Z][a-zA-Z0-9-]{0,63}$"#)
+    private static let semverRegex = try! NSRegularExpression(pattern: #"^\d+\.\d+\.\d+"#)
+
+    /// Full build-time parse — validates x-apppod, rejects unsupported keywords, extracts images/env_files.
+    static func parseBuild(composePath: String) throws -> ComposeConfig {
+        let absPath = (composePath as NSString).standardizingPath
+        let fullPath: String
+        if absPath.hasPrefix("/") {
+            fullPath = absPath
+        } else {
+            fullPath = FileManager.default.currentDirectoryPath + "/" + composePath
+        }
+
+        let composeDir = (fullPath as NSString).deletingLastPathComponent
+
+        guard let data = FileManager.default.contents(atPath: fullPath) else {
+            throw ComposeError.fileNotFound(fullPath)
+        }
+        guard let contents = String(data: data, encoding: .utf8) else {
+            throw ComposeError.invalidFormat
+        }
+        guard let root = try Yams.load(yaml: contents) as? [String: Any] else {
+            throw ComposeError.invalidFormat
+        }
+
+        // Parse x-apppod block (required for build)
+        guard let xApppod = root["x-apppod"] as? [String: Any] else {
+            throw ComposeError.missingField("x-apppod")
+        }
+
+        // name (required)
+        guard let name = xApppod["name"] as? String, !name.isEmpty else {
+            throw ComposeError.missingField("x-apppod.name")
+        }
+        let nameRange = NSRange(name.startIndex..., in: name)
+        guard nameRegex.firstMatch(in: name, range: nameRange) != nil else {
+            throw ComposeError.invalidValue("x-apppod.name", name, "must match ^[a-zA-Z][a-zA-Z0-9-]{0,63}$")
+        }
+
+        // version (required)
+        guard let version = xApppod["version"] as? String, !version.isEmpty else {
+            throw ComposeError.missingField("x-apppod.version")
+        }
+        let versionRange = NSRange(version.startIndex..., in: version)
+        guard semverRegex.firstMatch(in: version, range: versionRange) != nil else {
+            throw ComposeError.invalidValue("x-apppod.version", version, "not valid semver")
+        }
+
+        // identifier (required)
+        guard let identifier = xApppod["identifier"] as? String, !identifier.isEmpty else {
+            throw ComposeError.missingField("x-apppod.identifier")
+        }
+
+        // display_name (optional)
+        let displayName = (xApppod["display_name"] as? String) ?? (xApppod["name"] as? String)
+
+        // icon (optional)
+        let icon = xApppod["icon"] as? String
+
+        // vm (required)
+        guard let vm = xApppod["vm"] as? [String: Any] else {
+            throw ComposeError.missingField("x-apppod.vm")
+        }
+        let (cpuMin, cpuRecommended, memoryMBMin, memoryMBRecommended, diskMB) = try parseVMConfig(vm)
+
+        // healthcheck (required)
+        guard let hc = xApppod["healthcheck"] as? [String: Any] else {
+            throw ComposeError.missingField("x-apppod.healthcheck")
+        }
+        guard let hcURL = hc["url"] as? String, !hcURL.isEmpty else {
+            throw ComposeError.missingField("x-apppod.healthcheck.url")
+        }
+        if let parsed = URL(string: hcURL), parsed.host != "127.0.0.1" {
+            throw ComposeError.invalidValue("x-apppod.healthcheck.url", hcURL, "must target 127.0.0.1")
+        }
+
+        let healthCheck = HealthCheckConfig(
+            url: hcURL,
+            intervalSeconds: (hc["interval_seconds"] as? Int) ?? 10,
+            timeoutSeconds: (hc["timeout_seconds"] as? Int) ?? 5,
+            startupTimeoutSeconds: (hc["startup_timeout_seconds"] as? Int) ?? 120
+        )
+
+        // Parse services with full validation
+        guard let svcs = root["services"] as? [String: Any] else {
+            throw ComposeError.missingField("services")
+        }
+
+        var allMappings: [PortMapping] = []
+        var serviceInfos: [ServiceInfo] = []
+        var images: [String] = []
+        var seenImages = Set<String>()
+        var hostPorts: [Int] = []
+        var envFiles: [String] = []
+
+        for (svcName, svcRaw) in svcs {
+            guard let svc = svcRaw as? [String: Any] else { continue }
+
+            // Hard-reject validation
+            if svc["build"] != nil {
+                throw ComposeError.rejected(svcName, "build:", "use pre-built images only")
+            }
+            if svc["extends"] != nil {
+                throw ComposeError.rejected(svcName, "extends:", "not supported")
+            }
+            if let profiles = svc["profiles"], profiles != nil {
+                throw ComposeError.rejected(svcName, "profiles:", "not supported in v1")
+            }
+            if let nm = svc["network_mode"] as? String, nm == "host" {
+                throw ComposeError.rejected(svcName, "network_mode: host", "breaks vsock port forwarding")
+            }
+
+            // Check volumes for bind mounts
+            if let vols = svc["volumes"] as? [Any] {
+                for v in vols {
+                    if let volStr = v as? String, isBindMount(volStr) {
+                        throw ComposeError.rejected(svcName, "bind mount volume \"\(volStr)\"", "only named volumes are supported")
+                    }
+                    if let volMap = v as? [String: Any], (volMap["type"] as? String) == "bind" {
+                        throw ComposeError.rejected(svcName, "bind mount volume", "only named volumes are supported")
+                    }
+                }
+            }
+
+            // Extract image
+            if let image = svc["image"] as? String, !image.isEmpty {
+                if !seenImages.contains(image) {
+                    seenImages.insert(image)
+                    images.append(image)
+                }
+            }
+
+            // Extract ports
+            var svcMappings: [PortMapping] = []
+            if let ports = svc["ports"] as? [Any] {
+                for port in ports {
+                    if let mapping = parsePortEntry(port) {
+                        svcMappings.append(mapping)
+                        hostPorts.append(Int(mapping.hostPort))
+                    }
+                }
+            }
+
+            if !svcMappings.isEmpty {
+                allMappings.append(contentsOf: svcMappings)
+                serviceInfos.append(ServiceInfo(
+                    name: svcName,
+                    displayLabel: titleCase(svcName),
+                    ports: svcMappings
+                ))
+            }
+
+            // Extract env_file references
+            let svcEnvFiles = try extractEnvFiles(svc, serviceName: svcName, composeDir: composeDir)
+            envFiles.append(contentsOf: svcEnvFiles)
+        }
+
+        serviceInfos.sort { $0.name < $1.name }
+
+        // Must have at least one exposed port
+        if hostPorts.isEmpty {
+            throw ComposeError.validationFailed("no services with ports: found — at least one exposed port is required")
+        }
+
+        // Cross-validate healthcheck URL port against service ports
+        if let parsed = URL(string: hcURL) {
+            let portStr = parsed.port.map(String.init) ?? "80"
+            guard let hcPort = Int(portStr) else {
+                throw ComposeError.invalidValue("healthcheck URL", portStr, "invalid port")
+            }
+            if !hostPorts.contains(hcPort) {
+                throw ComposeError.validationFailed("healthcheck URL port \(hcPort) does not match any service host port \(hostPorts)")
+            }
+        }
+
+        return ComposeConfig(
+            portMappings: allMappings,
+            healthCheck: healthCheck,
+            displayName: displayName,
+            services: serviceInfos,
+            name: name,
+            version: version,
+            identifier: identifier,
+            icon: icon,
+            cpuMin: cpuMin,
+            cpuRecommended: cpuRecommended,
+            memoryMBMin: memoryMBMin,
+            memoryMBRecommended: memoryMBRecommended,
+            diskMB: diskMB,
+            images: images,
+            envFiles: envFiles,
+            composePath: fullPath,
+            composeDir: composeDir
+        )
+    }
+
+    // MARK: - VM Config
+
+    private static func parseVMConfig(_ vm: [String: Any]) throws -> (cpuMin: Int, cpuRec: Int, memMin: Int, memRec: Int, diskMB: Int) {
+        guard let cpu = vm["cpu"] as? [String: Any] else {
+            throw ComposeError.missingField("x-apppod.vm.cpu")
+        }
+        let cpuMin = toInt(cpu["min"])
+        if cpuMin < 1 || cpuMin > 16 {
+            throw ComposeError.invalidValue("x-apppod.vm.cpu.min", "\(cpuMin)", "must be 1-16")
+        }
+        var cpuRec = toInt(cpu["recommended"])
+        if cpuRec == 0 { cpuRec = cpuMin }
+        if cpuRec < cpuMin {
+            throw ComposeError.invalidValue("x-apppod.vm.cpu.recommended", "\(cpuRec)", "must be >= min (\(cpuMin))")
+        }
+
+        guard let mem = vm["memory_mb"] as? [String: Any] else {
+            throw ComposeError.missingField("x-apppod.vm.memory_mb")
+        }
+        let memMin = toInt(mem["min"])
+        if memMin < 512 || memMin > 32768 {
+            throw ComposeError.invalidValue("x-apppod.vm.memory_mb.min", "\(memMin)", "must be 512-32768")
+        }
+        var memRec = toInt(mem["recommended"])
+        if memRec == 0 { memRec = memMin }
+        if memRec < memMin {
+            throw ComposeError.invalidValue("x-apppod.vm.memory_mb.recommended", "\(memRec)", "must be >= min (\(memMin))")
+        }
+
+        let diskMB = toInt(vm["disk_mb"])
+        if diskMB < 1024 {
+            throw ComposeError.invalidValue("x-apppod.vm.disk_mb", "\(diskMB)", "must be >= 1024")
+        }
+
+        return (cpuMin, cpuRec, memMin, memRec, diskMB)
+    }
+
+    // MARK: - Env Files
+
+    private static func extractEnvFiles(_ svc: [String: Any], serviceName: String, composeDir: String) throws -> [String] {
+        guard let ef = svc["env_file"] else { return [] }
+
+        var paths: [String] = []
+        if let s = ef as? String {
+            paths = [s]
+        } else if let arr = ef as? [Any] {
+            for item in arr {
+                if let s = item as? String {
+                    paths.append(s)
+                } else if let m = item as? [String: Any], let p = m["path"] as? String {
+                    paths.append(p)
+                }
+            }
+        }
+
+        var result: [String] = []
+        let fm = FileManager.default
+        for p in paths {
+            let abs: String
+            if (p as NSString).isAbsolutePath {
+                abs = p
+            } else {
+                abs = (composeDir as NSString).appendingPathComponent(p)
+            }
+            guard fm.fileExists(atPath: abs) else {
+                throw ComposeError.validationFailed("service \"\(serviceName)\" references env_file \"\(p)\" which does not exist")
+            }
+            result.append(abs)
+        }
+
+        return result
+    }
+
+    // MARK: - Bind Mount Detection
+
+    private static func isBindMount(_ vol: String) -> Bool {
+        let parts = vol.split(separator: ":", maxSplits: 1)
+        guard parts.count >= 2 else { return false }
+        let src = String(parts[0])
+        return src.hasPrefix(".") || src.hasPrefix("/") || src.hasPrefix("~")
+    }
+
+    // MARK: - Private Parsers (runtime)
 
     private static func parseServices(from root: [String: Any]) -> (portMappings: [PortMapping], services: [ServiceInfo]) {
         guard let svcs = root["services"] as? [String: Any] else { return ([], []) }
@@ -205,13 +512,36 @@ enum ComposeConfigParser {
         return nil
     }
 
+    private static func toInt(_ value: Any?) -> Int {
+        guard let v = value else { return 0 }
+        if let n = v as? Int { return n }
+        if let n = v as? Double { return Int(n) }
+        if let s = v as? String { return Int(s) ?? 0 }
+        return 0
+    }
+
     enum ComposeError: LocalizedError {
         case invalidFormat
+        case fileNotFound(String)
+        case missingField(String)
+        case invalidValue(String, String, String)
+        case rejected(String, String, String)
+        case validationFailed(String)
 
         var errorDescription: String? {
             switch self {
             case .invalidFormat:
                 return "docker-compose.yml is not valid YAML or has unexpected structure"
+            case .fileNotFound(let path):
+                return "compose file not found: \(path)"
+            case .missingField(let field):
+                return "\(field) is required"
+            case .invalidValue(let field, let value, let reason):
+                return "\(field) \"\(value)\" is invalid: \(reason)"
+            case .rejected(let service, let keyword, let reason):
+                return "service \"\(service)\" uses \(keyword) which is not supported — \(reason)"
+            case .validationFailed(let msg):
+                return msg
             }
         }
     }

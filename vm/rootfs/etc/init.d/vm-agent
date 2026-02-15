@@ -1,0 +1,24 @@
+#!/sbin/openrc-run
+
+description="VM Agent - vsock control channel"
+command="/usr/local/bin/vm-agent.sh"
+command_background=true
+pidfile="/run/vm-agent.pid"
+
+depend() {
+    need docker
+    after docker
+}
+
+start_pre() {
+    # Mount VirtIO shared directories if available (build mode)
+    for tag in workspace output; do
+        mountpoint="/mnt/$tag"
+        if mountpoint -q "$mountpoint" 2>/dev/null; then
+            continue
+        fi
+        mkdir -p "$mountpoint"
+        mount -t virtiofs "$tag" "$mountpoint" 2>/dev/null && \
+            einfo "Mounted VirtIO share: $tag -> $mountpoint"
+    done
+}

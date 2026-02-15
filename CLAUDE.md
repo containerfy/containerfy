@@ -12,10 +12,10 @@ CLAUDE.md         — This file: project context, expert roles, conventions
 
 ## Tech Stack
 
-- **macOS app**: Swift / AppKit (menu bar `NSStatusItem`), Virtualization.framework
-- **CLI (`apppod pack`)**: Go — compose parsing, image handling, ext4 build, signing, DMG packaging
+- **macOS app + CLI**: Swift / AppKit (menu bar `NSStatusItem`), Virtualization.framework — single binary serves both roles
 - **VM**: Alpine Linux (aarch64), Docker Engine + Compose v2, shell-based VM agent + socat
 - **Host↔VM**: vsock exclusively (control port 1024, data ports 10XXX)
+- **Build**: VM-based — CLI boots pre-built VM, Docker inside pulls images, creates ext4 (no Docker required on host)
 
 ## Expert Roles
 
@@ -24,8 +24,7 @@ Use these perspectives for multi-angle review of changes:
 | Role | Focus |
 |---|---|
 | **PM** | Scope, prioritization, user-facing requirements, milestone tracking |
-| **Swift Dev** | macOS app: menu bar, VM lifecycle, port forwarding, health checks, Virtualization.framework, `@MainActor` constraints |
-| **Go Dev** | CLI: compose parsing, image pull/save, ext4 builder container, signing/notarization, DMG packaging |
+| **Swift Dev** | macOS app + CLI: menu bar, VM lifecycle, port forwarding, health checks, Virtualization.framework, `@MainActor` constraints, pack command, compose validation, bundle assembly |
 | **Docker/VM Expert** | Alpine image, Docker Engine config, compose passthrough, VM agent, boot sequence, vsock control protocol |
 | **Security/Distribution** | Code signing, notarization, Gatekeeper, entitlements, secrets handling, bundle integrity |
 
@@ -34,4 +33,5 @@ Use these perspectives for multi-angle review of changes:
 - All architecture decisions go in `ARCHITECTURE.md`
 - Progress tracked in `ROADMAP.md`
 - Squash commits on main
-- **No local toolchains required** — use Docker images for builds (e.g. `golang:1.22-alpine` for Go, builder container for VM images)
+- **No Docker required for developers** — VM-based build eliminates Docker Desktop dependency
+- **CI builds VM base image** — developers install binary + base image via `install.sh`

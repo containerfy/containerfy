@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-vm-base:
+    name: Build VM Base Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU (for arm64 builds)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build VM base image
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            --load \
+            -t apppod-builder \
+            vm/
+
+      - name: Extract artifacts from builder
+        run: |
+          # Run the builder to produce artifacts
+          container_id=$(docker run --platform linux/arm64 --privileged -d apppod-builder)
+          docker wait "$container_id"
+
+          # Copy artifacts out
+          mkdir -p artifacts
+          docker cp "$container_id:/output/vm-root.img.lz4" artifacts/vm-base.img.lz4
+          docker cp "$container_id:/output/vmlinuz-lts" artifacts/vmlinuz-lts
+          docker cp "$container_id:/output/initramfs-lts" artifacts/initramfs-lts
+          docker rm "$container_id"
+
+          ls -lh artifacts/
+
+      - name: Upload VM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-base-artifacts
+          path: artifacts/
+          retention-days: 1
+
+  build-swift:
+    name: Build Swift Binary
+    runs-on: macos-14  # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Ad-hoc sign binary
+        run: |
+          codesign -s - \
+            --entitlements Resources/Entitlements.plist \
+            --force \
+            .build/release/AppPod
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifacts
+          cp .build/release/AppPod artifacts/apppod-darwin-arm64
+          chmod +x artifacts/apppod-darwin-arm64
+
+      - name: Upload Swift binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-binary
+          path: artifacts/
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: [build-vm-base, build-swift]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download VM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vm-base-artifacts
+          path: release-assets/
+
+      - name: Download Swift binary
+        uses: actions/download-artifact@v4
+        with:
+          name: swift-binary
+          path: release-assets/
+
+      - name: List release assets
+        run: ls -lh release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/apppod-darwin-arm64
+            release-assets/vm-base.img.lz4
+            release-assets/vmlinuz-lts
+            release-assets/initramfs-lts
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}

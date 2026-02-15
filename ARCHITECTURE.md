@@ -64,6 +64,8 @@ The developer's only input is a single `docker-compose.yml` with an `x-apppod` e
 
 **Key constraint:** The macOS app does NOT implement container tooling. The VM is a self-contained appliance. The app only manages VM lifecycle, health checks, port forwarding, and UX.
 
+**Unified binary:** The same Swift binary serves as both the developer CLI (`apppod pack`) and the end-user GUI app (menu bar). CLI mode is activated when `pack` is the first argument; otherwise the GUI launches. The VM base image serves dual roles: build environment (CLI boots it, Docker inside pulls images, creates ext4) and runtime environment (end user's .app boots it with images pre-loaded).
+
 **Key networking decision:** vsock for all host↔VM communication. No NAT IP discovery, no firewall issues. The VM's NAT adapter exists solely for outbound internet from containers.
 
 ---
@@ -134,9 +136,9 @@ All transitions are `@MainActor`-isolated. `VZVirtualMachineDelegate` callbacks 
 - 3 consecutive failures → Error state
 - Periodic `DISK` query — menu bar warning when data disk exceeds ~90% usage
 
-### Go CLI (`apppod`) — Developer-Facing
+### Swift CLI (`apppod pack`) — Developer-Facing
 
-A standalone CLI that developers run to produce a distributable `.app` bundle. Never runs on end-user machines.
+The same Swift binary serves dual roles: CLI tool for developers and GUI app for end users. When invoked with `apppod pack`, it runs in CLI mode (no NSApplication). Otherwise it launches the menu bar GUI.
 
 ```
 apppod pack \
@@ -146,22 +148,25 @@ apppod pack \
 
 What it does:
 1. Parses `docker-compose.yml` — validates `x-apppod` block, rejects hard-rejected keywords (see Compose Passthrough Model)
-2. Runs a privileged builder container that creates an ext4 root image: bootstraps Alpine, starts dockerd inside (Docker-in-Docker) to pull all referenced images directly into the filesystem, installs VM agent + OpenRC services + compose file
-3. Shrinks the filesystem (`resize2fs -M`) and compresses with lz4
-4. Extracts kernel + initramfs (VZLinuxBootLoader needs them as separate host files)
-6. Copies the prebuilt AppPod.app template and injects all resources
-7. Interactive signing and packaging:
-   - Lists available signing identities (`security find-identity`)
-   - Developer selects one (or skips for unsigned builds)
-   - Signs the `.app` bundle (`codesign`)
-   - Creates a `.dmg` disk image (`hdiutil`)
-   - Submits to Apple for notarization (`xcrun notarytool submit`)
-   - Staples the notarization ticket to the `.dmg` (`xcrun stapler staple`)
+2. Boots the pre-built VM base image using Virtualization.framework
+3. Docker inside the VM pulls all referenced images (`--platform linux/arm64`)
+4. VM agent creates ext4 root image from its own rootfs + pulled images, shrinks (`resize2fs -M`), compresses with lz4
+5. Artifacts transferred to host via VirtIO shared directories
+6. Swift assembles the .app bundle: copies artifacts, compose file, env files, generates Info.plist, embeds itself as the app binary
+7. Future: signing and packaging (Phase 6)
 
 **Build requirements:**
-- Docker must be running on the developer's machine. The CLI uses it to pull/save container images and to run a builder container that creates the ext4 root image (needs Linux tools like `mkfs.ext4`, `docker load`).
+- No Docker required on the developer's machine. The VM has Docker embedded.
+- VM base image must be installed at `~/.apppod/base/` (installed via `install.sh` or Homebrew)
 - Xcode Command Line Tools (`xcode-select --install`) for signing and notarization. Free.
 - Apple Developer account ($99/year) for the signing certificate. Required for notarized distribution — unsigned apps are blocked by Gatekeeper.
+
+**Installation:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/containerly/apppod/main/install.sh | bash
+```
+
+This downloads the binary to `/usr/local/bin/apppod` and the VM base image to `~/.apppod/base/`.
 
 **The .app bundle layout produced by the CLI:**
 ```
@@ -190,9 +195,15 @@ apppod pack [flags]
 | `--output` | `./<name>` (from `x-apppod.name`) | Output path (produces `.app` and `.dmg`) |
 | `--unsigned` | | Skip signing, notarization, and `.dmg` creation. Outputs `.app` only. |
 
-**Signed build** (default): lists available identities, prompts developer to select one, signs `.app`, creates `.dmg`, submits for notarization, staples ticket.
+**Signed build** (default): lists available identities, prompts developer to select one, signs `.app`, creates `.dmg`, submits for notarization, staples ticket. *(Phase 6)*
 
 **Unsigned build** (`--unsigned`): skips all signing. Useful for local testing. End users will see a Gatekeeper warning.
+
+```
+apppod --help
+```
+
+Shows available commands. With no arguments, launches the GUI menu bar app.
 
 ### Linux VM Image
 
@@ -228,7 +239,11 @@ Log rotation prevents unbounded growth on the data partition. `live-restore: fal
 → DISK            ← DISK:<used_mb>/<total_mb>
 → LOGS:<lines>    ← LOGS:<byte_count>\n<log data>
 → SHUTDOWN        ← ACK
+→ BUILD:<images>  ← BUILD_START, PULLING:<img>, PULLED:<img>, BUILD_IMAGES_DONE
+→ PACK            ← PACK_START, PACK_STEP:<step>, PACK_DONE
 ```
+
+BUILD and PACK are used during `apppod pack` (build mode). BUILD pulls images into Docker inside the VM. PACK creates the ext4 root image from the running VM's filesystem + pulled images, shrinks and compresses it, then writes artifacts to the VirtIO shared output directory.
 
 **Boot sequence inside VM** (OpenRC dependency chain):
 1. Mount root and data partitions, fsck
@@ -410,7 +425,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 - Persistent data (dual-disk), launch at login
 - Host validation (hard fail + soft warn)
 - Sleep/wake recovery, crash recovery
-- Go CLI to package `.app` bundles
+- Unified Swift CLI to package `.app` bundles (no Docker required)
 
 **Hard-rejected Compose keywords** (see Compose Passthrough Model):
 - `build:`, bind mount volumes, `extends:`, `profiles:`
@@ -455,7 +470,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 | Menu item generation | Auto from services with `ports:` | Zero config. Service name = label. Encourages clean appliance design (don't expose internal services). |
 | Control protocol | Line-based text over vsock | No serialization deps. Readable with socat for debugging. |
 | macOS app language | Swift, AppKit NSStatusItem | Native menu bar control. No SwiftUI quirks. |
-| CLI language | Go | Single static binary, easy to distribute cross-platform for developers. |
+| CLI language | Swift (unified binary) | Same binary for CLI (`apppod pack`) and GUI. One language, one toolchain. VM-based build eliminates Docker requirement. |
 | Build system (Swift) | SPM, no .xcodeproj | Merge-friendly, scriptable, CI-native. |
 | Compression | lz4 | 3x faster decompression than gzip. Acceptable size tradeoff for first-launch UX. |
 | Min macOS | 14.0 | VM pause/resume for sleep/wake, stable vsock, mature Virtualization.framework. 13 lacks clean suspend and isn't worth the workarounds. |
@@ -467,7 +482,7 @@ AppPod passes the compose file to `docker compose up` inside the VM **unchanged*
 
 | Question | Decision | Rationale |
 |---|---|---|
-| **Build bootstrapping** | Require Docker on dev machine; CLI auto-pulls images from compose file | Developers already have Docker. CLI runs a builder container for ext4 creation — no VM or cross-compilation needed. |
+| **Build bootstrapping** | VM-based build; no Docker required on dev machine | CLI boots a pre-built VM base image, Docker inside the VM pulls app images and creates the ext4 root disk. Developer installs one binary + base image via `install.sh`. |
 | **Update mechanism** | Manual re-download in v1; no data migration system | Developer publishes a new `.dmg`. User drags new `.app` over old one. App detects root image mismatch and re-decompresses. Data migration is the developer's responsibility (container entrypoints). |
 | **Sleep/wake** | Bumped min macOS to 14; use native `VZVirtualMachine.pause()`/`resume()` | Eliminates vsock reconnection uncertainty. Clean suspend/resume. macOS 13 isn't worth the workarounds. |
 | **Volume disk growth** | Alert user at threshold (~90%); no auto-resize | VM agent monitors disk usage and reports via control protocol. Menu bar shows warning. No runtime resize complexity. Developer sets `disk_mb` conservatively. |

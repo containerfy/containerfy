@@ -1,6 +1,6 @@
 # AppPod Roadmap
 
-Each phase is a shippable checkpoint. Phases 0-3 are sequential (Swift app). Phases 4-5 (Go CLI) can be developed in parallel starting from Phase 1. Phase 6 requires all prior phases.
+Each phase is a shippable checkpoint. Phases 0-4 are sequential (Swift app + Go CLI). Phase 5 unifies into a single Swift binary. Phases 6-7 follow once the unified binary is in place.
 
 ---
 
@@ -66,7 +66,21 @@ Developer-facing CLI that produces a distributable `.app` bundle.
 - [x] `Info.plist` generation (CFBundleIdentifier, CFBundleName, LSUIElement, etc.)
 - [x] Progress reporting (step counter for multi-minute operations)
 
-## Phase 5 — Signing + Distribution
+## Phase 5 — Unified Swift CLI + Pre-built VM Base ✅
+
+Eliminate Go CLI and Docker requirement. One Swift binary, one command.
+
+- [x] CI workflow: build VM base image + Swift binary, publish as GitHub release
+- [x] Install script (curl | bash) for developer setup
+- [x] CLI mode in Swift binary (`apppod pack` via argv detection)
+- [x] Extend ComposeConfig.swift with build-time validation (x-apppod, images, env_files, hard-reject keywords)
+- [x] VM-based builder: boot VM via Virtualization.framework, pull images inside, create ext4 via shared directories
+- [x] .app bundle assembly in Swift (port from Go bundle.go)
+- [x] VM agent: BUILD + PACK command handlers, VirtIO shared directory mounting
+- [x] Remove Go CLI (cli/ directory), move VM files to vm/
+- [x] Update ARCHITECTURE.md for single-language architecture
+
+## Phase 6 — Signing + Distribution
 
 Code signing, notarization, and DMG packaging.
 
@@ -82,7 +96,7 @@ Code signing, notarization, and DMG packaging.
 - [ ] Stapler retry with backoff (propagation delay)
 - [ ] `--unsigned` flag
 
-## Phase 6 — Polish + Hardening
+## Phase 7 — Polish + Hardening
 
 Production readiness and end-to-end validation.
 
@@ -94,6 +108,6 @@ Production readiness and end-to-end validation.
 
 ## Recommended Next Steps
 
-**Phase 5 (Signing + Distribution)** is the natural next phase — codesign, notarization, hardened runtime, and DMG packaging for distributable `.app` bundles.
+**Phase 6 (Signing + Distribution)** is the natural next phase — codesign, notarization, hardened runtime, and DMG packaging for distributable `.app` bundles.
 
-**Phase 6 (Polish + Hardening)** follows once signing is in place, providing end-to-end validation and crash recovery UX.
+**Phase 7 (Polish + Hardening)** follows once signing is in place, providing end-to-end validation and crash recovery UX.
