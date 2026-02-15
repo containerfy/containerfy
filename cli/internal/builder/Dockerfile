@@ -8,12 +8,11 @@ RUN apk add --no-cache \
 COPY rootfs/ /
 
 RUN chmod +x /usr/local/bin/vm-agent*.sh \
-    /etc/init.d/vm-agent /etc/init.d/apppod-seed \
+    /etc/init.d/vm-agent \
     /etc/init.d/apppod-compose /etc/init.d/data-disk && \
     rc-update add networking default && \
     rc-update add docker default && \
     rc-update add vm-agent default && \
-    rc-update add apppod-seed default && \
     rc-update add apppod-compose default && \
     rc-update add data-disk default && \
     mkdir -p /data
@@ -21,7 +20,7 @@ RUN chmod +x /usr/local/bin/vm-agent*.sh \
 # ---- Stage 2: ext4 image builder ----
 FROM --platform=linux/arm64 alpine:3.20
 
-RUN apk add --no-cache e2fsprogs lz4 docker rsync
+RUN apk add --no-cache e2fsprogs lz4 rsync
 
 COPY --from=vm / /vm-rootfs/
 COPY build-image.sh /build-image.sh

@@ -13,7 +13,7 @@ mkfs.ext4 -F $IMG
 mount -o loop $IMG $MOUNT
 rsync -a /vm-rootfs/ $MOUNT/
 
-# Install compose + env files from workspace
+# Install compose + env files + image tars from workspace
 if [ -d /workspace ]; then
     mkdir -p $MOUNT/etc/apppod
     if [ -f /workspace/docker-compose.yml ]; then
@@ -23,39 +23,11 @@ if [ -d /workspace ]; then
     for f in /workspace/*.env; do
         [ -f "$f" ] && cp "$f" $MOUNT/etc/apppod/
     done
-fi
-
-# Pull images via Docker-in-Docker
-if [ -n "$APPPOD_IMAGES" ]; then
-    echo "Starting Docker daemon for image preloading..."
-    dockerd \
-        --data-root $MOUNT/var/lib/docker \
-        --host unix:///tmp/build.sock \
-        --pidfile /tmp/build.pid \
-        --iptables=false --bridge=none \
-        >/tmp/dockerd.log 2>&1 &
-
-    echo "Waiting for Docker daemon..."
-    for i in $(seq 1 30); do
-        if DOCKER_HOST=unix:///tmp/build.sock docker info >/dev/null 2>&1; then
-            break
-        fi
-        if [ $i -eq 30 ]; then
-            echo "Docker daemon failed to start:"
-            cat /tmp/dockerd.log
-            exit 1
-        fi
-        sleep 1
-    done
-
-    for image in $APPPOD_IMAGES; do
-        echo "Pulling $image..."
-        DOCKER_HOST=unix:///tmp/build.sock docker pull --platform linux/arm64 "$image"
-    done
-
-    kill $(cat /tmp/build.pid) 2>/dev/null
-    wait 2>/dev/null
-    echo "Image preloading complete."
+    if [ -d /workspace/images ]; then
+        mkdir -p $MOUNT/var/cache/apppod/images
+        cp /workspace/images/*.tar $MOUNT/var/cache/apppod/images/
+        echo "Installed $(ls /workspace/images/*.tar | wc -l) image tar(s)"
+    fi
 fi
 
 umount $MOUNT

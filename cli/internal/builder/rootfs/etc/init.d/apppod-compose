@@ -1,6 +1,6 @@
 #!/sbin/openrc-run
 
-description="Start compose services"
+description="Load preloaded images and start compose services"
 
 depend() {
     need docker
@@ -9,9 +9,23 @@ depend() {
 
 start() {
     ebegin "Starting compose services"
+
+    # Load preloaded images on first boot
+    if [ -d /var/cache/apppod/images ] && [ ! -f /data/.images-loaded ]; then
+        einfo "Loading preloaded container images..."
+        for tar in /var/cache/apppod/images/*.tar; do
+            [ -f "$tar" ] || continue
+            einfo "  Loading $(basename "$tar")..."
+            docker load -i "$tar" 2>/dev/null
+        done
+        mkdir -p /data
+        touch /data/.images-loaded
+    fi
+
     if [ -f /etc/apppod/docker-compose.yml ]; then
         docker compose -f /etc/apppod/docker-compose.yml up -d
     fi
+
     eend $?
 }
 

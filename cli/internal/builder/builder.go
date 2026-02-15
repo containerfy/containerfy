@@ -27,15 +27,36 @@ func CheckDocker() error {
 }
 
 // Build orchestrates the full root image build for apppod pack:
-// 1. Build the builder container image
-// 2. Run it with workspace + image list (pulls images via Docker-in-Docker)
-// 3. Copy artifacts (compressed root image, kernel, initramfs)
+// 1. Pull and save app images using the host's Docker
+// 2. Build the builder container (has pre-staged VM rootfs)
+// 3. Run it to create ext4 with compose + images injected
+// 4. Copy artifacts (compressed root image, kernel, initramfs)
 func Build(cfg *compose.Config, outputDir string, stepOffset int) error {
 	workspace, err := os.MkdirTemp("", "apppod-build-*")
 	if err != nil {
 		return fmt.Errorf("creating workspace: %w", err)
 	}
 	defer os.RemoveAll(workspace)
+
+	// Pull and save app images on the host
+	imgDir := filepath.Join(workspace, "images")
+	if err := os.MkdirAll(imgDir, 0o755); err != nil {
+		return fmt.Errorf("creating image dir: %w", err)
+	}
+
+	step := stepOffset + 1
+	for i, image := range cfg.Images {
+		fmt.Printf("[%d] Pulling %s (%d/%d)...\n", step, image, i+1, len(cfg.Images))
+		if err := dockerRun("pull", "--platform", "linux/arm64", image); err != nil {
+			return fmt.Errorf("pulling %s: %w", image, err)
+		}
+
+		tarName := sanitizeImageName(image) + ".tar"
+		tarPath := filepath.Join(imgDir, tarName)
+		if err := dockerRun("save", "-o", tarPath, image); err != nil {
+			return fmt.Errorf("saving %s: %w", image, err)
+		}
+	}
 
 	// Copy compose file to workspace
 	composeData, err := os.ReadFile(cfg.ComposePath)
@@ -59,16 +80,16 @@ func Build(cfg *compose.Config, outputDir string, stepOffset int) error {
 	}
 
 	// Build builder image
-	step := stepOffset + 1
-	fmt.Printf("[%d] Building builder container...\n", step)
+	step++
+	fmt.Printf("[%d] Preparing builder...\n", step)
 	if err := buildBuilderImage(); err != nil {
 		return fmt.Errorf("building builder image: %w", err)
 	}
 
-	// Run builder container — pulls images directly via Docker-in-Docker
+	// Run builder container — creates ext4, injects compose + images, compresses
 	step++
-	fmt.Printf("[%d] Building root image (pulling %d images)...\n", step, len(cfg.Images))
-	containerID, err := runBuilder(workspace, cfg.Images)
+	fmt.Printf("[%d] Building root image...\n", step)
+	containerID, err := runBuilder(workspace)
 	if err != nil {
 		return fmt.Errorf("running builder: %w", err)
 	}
@@ -94,6 +115,18 @@ func Build(cfg *compose.Config, outputDir string, stepOffset int) error {
 	return nil
 }
 
+func dockerRun(args ...string) error {
+	cmd := exec.Command("docker", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func sanitizeImageName(image string) string {
+	r := strings.NewReplacer("/", "_", ":", "_", ".", "_")
+	return r.Replace(image)
+}
+
 func buildBuilderImage() error {
 	cmd := exec.Command(
 		"docker", "build",
@@ -106,14 +139,13 @@ func buildBuilderImage() error {
 	return cmd.Run()
 }
 
-func runBuilder(workspace string, images []string) (string, error) {
+func runBuilder(workspace string) (string, error) {
 	cmd := exec.Command(
 		"docker", "run",
 		"--platform", "linux/arm64",
 		"--privileged",
 		"--detach",
 		"-v", fmt.Sprintf("%s:/workspace:ro", workspace),
-		"-e", fmt.Sprintf("APPPOD_IMAGES=%s", strings.Join(images, " ")),
 		builderImageName,
 	)
 	out, err := cmd.Output()

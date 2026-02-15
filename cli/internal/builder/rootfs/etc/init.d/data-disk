@@ -6,7 +6,6 @@ depend() {
     before docker
     before vm-agent
     before apppod-compose
-    before apppod-seed
 }
 
 start() {
