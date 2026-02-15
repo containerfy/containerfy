@@ -6,60 +6,46 @@ The developer's only input is a single `docker-compose.yml` with an `x-container
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  macOS Host                                                      │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │  <AppName>.app  (Swift · menu bar · generic binary)        │  │
-│  │                                                            │  │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐  │  │
-│  │  │ Host         │  │ VM Lifecycle │  │ Menu Bar UI     │  │  │
-│  │  │ Validator    │  │ Manager      │  │ (AppKit)        │  │  │
-│  │  └──────┬───────┘  └──────┬───────┘  └────────┬────────┘  │  │
-│  │         │                 │                    │           │  │
-│  │         │          ┌──────┴───────┐   ┌───────┴────────┐  │  │
-│  │         │          │ Port         │   │ State Machine  │  │  │
-│  │         │          │ Forwarder    │   │ Controller     │  │  │
-│  │         │          └──────┬───────┘   └────────────────┘  │  │
-│  │         │                 │                                │  │
-│  └─────────┼─────────────────┼────────────────────────────────┘  │
-│            │        vsock    │                                    │
-│            │     ┌───────────┴──────────┐                        │
-│            │     │  port 1024: control  │                        │
-│            │     │  port 10XXX: data    │                        │
-│            │     └───────────┬──────────┘                        │
-│  ┌─────────┼─────────────────┼────────────────────────────────┐  │
-│  │  Linux VM  (Virtualization.framework · Apple Silicon)      │  │
-│  │         │                 │                                 │  │
-│  │         │     ┌───────────┴──────────┐                     │  │
-│  │         │     │  VM Agent            │                     │  │
-│  │         │     │  (shell + socat)     │                     │  │
-│  │         │     │  - vsock↔TCP bridge  │                     │  │
-│  │         │     │  - health reporter   │                     │  │
-│  │         │     │  - log forwarder     │                     │  │
-│  │         │     └───────────┬──────────┘                     │  │
-│  │         │     ┌───────────┴──────────┐                     │  │
-│  │         │     │  Docker Engine       │                     │  │
-│  │         │     │  docker compose up   │                     │  │
-│  │         │     │    ┌───┐┌───┐┌───┐   │                     │  │
-│  │         │     │    │svc││svc││svc│   │                     │  │
-│  │         │     │    │ A ││ B ││ C │   │                     │  │
-│  │         │     │    └───┘└───┘└───┘   │                     │  │
-│  │         │     └──────────────────────┘                     │  │
-│  │         │                                                  │  │
-│  │  ┌──────┴──────────────────────────────────────────────┐   │  │
-│  │  │  /dev/vda (root)     │  /dev/vdb (data - persistent)│   │  │
-│  │  │  Alpine + Docker +   │  Docker volumes, app state   │   │  │
-│  │  │  images + compose    │  Survives VM recreate        │   │  │
-│  │  └─────────────────────────────────────────────────────┘   │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ~/Library/Application Support/<AppName>/                        │
-│    ├── vm-root.img       (copy of base image)                    │
-│    ├── vm-data.img       (persistent data partition)             │
-│    └── containerfy.log                                                │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph host["macOS Host"]
+        subgraph app["‹AppName›.app — Swift · menu bar · generic binary"]
+            direction LR
+            HV["Host\nValidator"]
+            VLM["VM Lifecycle\nManager"]
+            UI["Menu Bar UI\n(AppKit)"]
+            PF["Port\nForwarder"]
+            SM["State Machine\nController"]
+        end
+
+        app <--"vsock — control :1024 · data :10XXX"--> vm
+
+        subgraph vm["Linux VM — Virtualization.framework · Apple Silicon"]
+            subgraph agent["VM Agent — shell + socat"]
+                direction LR
+                bridge["vsock↔TCP bridge"]
+                health["health reporter"]
+                logs["log forwarder"]
+            end
+
+            agent --> docker
+
+            subgraph docker["Docker Engine — docker compose up"]
+                direction LR
+                sA["svc A"]
+                sB["svc B"]
+                sC["svc C"]
+            end
+
+            subgraph disks["Disk Layout"]
+                direction LR
+                root["/dev/vda (root)\nAlpine + Docker\nimages + compose"]
+                data["/dev/vdb (data · persistent)\nDocker volumes, app state\nSurvives VM recreate"]
+            end
+        end
+
+        files["~/Library/Application Support/‹AppName›/\nvm-root.img · vm-data.img · containerfy.log"]
+    end
 ```
 
 **Key constraint:** The macOS app does NOT implement container tooling. The VM is a self-contained appliance. The app only manages VM lifecycle, health checks, port forwarding, and UX.
@@ -87,17 +73,31 @@ The same compiled `.app` binary is used for every appliance. It reads `docker-co
 
 **State machine:**
 
-```
-Stopped → ValidatingHost → InsufficientResources → Stopped (retry/quit)
-                         → StartingVM → WaitingForHealth → Running
-                                      → Error
-                         → WaitingForHealth → Stopping → Stopped
-                                            → Error
-Running → Stopping → Stopped
-Running → Error → StartingVM (auto-restart)
-                → Stopped (user stop)
-Error → Stopped (user stop)
-Any state → Stopped (quit — Quit always means Stop+Exit)
+```mermaid
+stateDiagram-v2
+    [*] --> Stopped
+    Stopped --> ValidatingHost
+
+    ValidatingHost --> InsufficientResources
+    InsufficientResources --> Stopped : retry / quit
+
+    ValidatingHost --> StartingVM
+    StartingVM --> WaitingForHealth
+    StartingVM --> Error
+
+    WaitingForHealth --> Running
+    WaitingForHealth --> Stopping
+    WaitingForHealth --> Error
+
+    Running --> Stopping
+    Running --> Error
+
+    Stopping --> Stopped
+
+    Error --> StartingVM : auto‑restart
+    Error --> Stopped : user stop
+
+    note right of Stopped : Quit from any state = Stop + Exit
 ```
 
 All transitions are `@MainActor`-isolated. `VZVirtualMachineDelegate` callbacks dispatch to `@MainActor` before touching state. Transitions are guarded: "if current state is X, move to Y; otherwise ignore and log."
@@ -254,12 +254,13 @@ Log rotation prevents unbounded growth on the data partition. `live-restore: fal
 BUILD and PACK are used during `containerfy pack` (build mode). BUILD pulls images into Docker inside the VM. PACK creates the ext4 root image from the running VM's filesystem + pulled images, shrinks and compresses it, then writes artifacts to the VirtIO shared output directory.
 
 **Boot sequence inside VM** (OpenRC dependency chain):
-1. Mount root and data partitions, fsck
-2. Start dockerd (wait for `docker info` to succeed)
-3. Start VM agent (vsock listener + socat bridges)
-4. `docker compose up -d` (images already loaded, no pull)
 
-OpenRC dependency chain: `mount /data` → `dockerd` → `vm-agent` (which runs `docker compose up -d` after verifying `docker info` succeeds).
+```mermaid
+flowchart LR
+    A["mount /data\n+ fsck"] --> B["dockerd\n(wait for docker info)"]
+    B --> C["vm-agent\n(vsock + socat)"]
+    C --> D["docker compose up -d\n(images preloaded)"]
+```
 
 ---
 
