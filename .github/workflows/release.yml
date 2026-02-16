@@ -7,39 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-vm-base:
-    name: Build & Push VM Builder Image
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU (for arm64 builds)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push VM builder image
-        uses: docker/build-push-action@v5
-        with:
-          context: vm/
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ghcr.io/containerfy/vm-builder:latest
-            ghcr.io/containerfy/vm-builder:${{ github.ref_name }}
-
   build-swift:
     name: Build Swift Binary
     runs-on: macos-14  # Apple Silicon runner
@@ -109,7 +76,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build-vm-base, build-swift]
+    needs: [build-swift]
     runs-on: ubuntu-latest
     permissions:
       contents: write
