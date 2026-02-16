@@ -201,7 +201,7 @@ enum ComposeConfigParser {
             if svc["extends"] != nil {
                 throw ComposeError.rejected(svcName, "extends:", "not supported")
             }
-            if let profiles = svc["profiles"], profiles != nil {
+            if svc["profiles"] != nil {
                 throw ComposeError.rejected(svcName, "profiles:", "not supported in v1")
             }
             if let nm = svc["network_mode"] as? String, nm == "host" {

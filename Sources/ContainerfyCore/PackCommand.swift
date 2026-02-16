@@ -144,7 +144,7 @@ public struct PackCommand {
     }
 
     private static func printError(_ message: String) {
-        var stderr = FileHandle.standardError
+        let stderr = FileHandle.standardError
         stderr.write("Error: \(message)\n".data(using: .utf8)!)
     }
 
