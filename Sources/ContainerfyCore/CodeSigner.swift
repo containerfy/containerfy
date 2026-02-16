@@ -127,7 +127,6 @@ struct CodeSigner {
     }
 
     private func printWarning(_ message: String) {
-        var stderr = FileHandle.standardError
-        print("Warning: \(message)", to: &stderr)
+        FileHandle.standardError.write(Data("Warning: \(message)\n".utf8))
     }
 }
