@@ -2,7 +2,7 @@
 
 Turn any Docker Compose app into a native macOS menu bar app.
 
-Containerfy packages your multi-container application into a single `.app` bundle that end users install like any other Mac app — drag to Applications, double-click, done. No Docker Desktop, no terminal commands, no container knowledge required. Under the hood, an embedded Alpine Linux VM runs Docker Engine with your images pre-loaded, communicating with the host over vsock. The developer writes a standard `docker-compose.yml`, adds a small config block, runs one command, and ships a signed `.dmg`.
+Containerfy packages your multi-container application into a single `.app` bundle that end users install like any other Mac app — drag to Applications, double-click, done. No Docker Desktop, no terminal commands, no container knowledge required. Under the hood, a Fedora CoreOS VM managed by Podman runs your containers, with networking handled by gvproxy. The developer writes a standard `docker-compose.yml`, adds a small config block, runs one command, and ships a signed `.dmg`.
 
 ## How It Works
 
@@ -11,7 +11,7 @@ Containerfy packages your multi-container application into a single `.app` bundl
 3. **Distribute** — Ship the `.app` directly or use `--signed` to create a notarized `.dmg`
 4. **Run** — End users double-click the app. It appears in the menu bar, boots an invisible VM, starts containers, and exposes services on `localhost`
 
-The VM is powered by Apple's Virtualization.framework (Apple Silicon native). All host-VM communication uses vsock — no NAT, no firewall rules, no DNS tricks.
+The VM is powered by vfkit (Apple Virtualization.framework, Apple Silicon native) with gvproxy handling networking — no manual firewall rules or DNS tricks.
 
 ## Quick Start
 
@@ -21,7 +21,7 @@ The VM is powered by Apple's Virtualization.framework (Apple Silicon native). Al
 curl -fsSL https://containerfy.dev/install.sh | bash
 ```
 
-This installs the `containerfy` binary to `/usr/local/bin/` and the VM base image to `~/.containerfy/base/`.
+This installs the `containerfy` binary to `/usr/local/bin/`.
 
 ### Define your app
 
@@ -147,7 +147,7 @@ xcrun notarytool store-credentials <profile-name>
 
 ### Compose passthrough
 
-Containerfy passes your compose file to `docker compose up` inside the VM **unchanged**. It only parses `services[*].image` (to preload images), `services[*].ports` (for port forwarding and menu items), top-level `volumes` (for data disk provisioning), and `services[*].env_file` (to bundle env files).
+Containerfy passes your compose file to `podman compose up` inside the VM **unchanged**. It only parses `services[*].image` (to preload images), `services[*].ports` (for port forwarding and menu items), top-level `volumes` (for data disk provisioning), and `services[*].env_file` (to bundle env files).
 
 **Hard-rejected keywords** (caught at build time):
 
@@ -159,13 +159,13 @@ Containerfy passes your compose file to `docker compose up` inside the VM **unch
 | `profiles:` | All services are always started |
 | `network_mode: host` | Breaks vsock port forwarding |
 
-Everything else — `command`, `entrypoint`, `depends_on`, `restart`, `networks`, `healthcheck`, `deploy`, `cap_add`, `privileged`, etc. — passes through to Docker Compose as-is.
+Everything else — `command`, `entrypoint`, `depends_on`, `restart`, `networks`, `healthcheck`, `deploy`, `cap_add`, `privileged`, etc. — passes through to Podman Compose as-is.
 
 ## Requirements
 
 - **macOS 14+** (Sonoma or later)
 - **Apple Silicon** (M1/M2/M3/M4)
-- **No Docker required** — the VM has Docker embedded
+- **No Docker required** — the VM runs Podman
 - **Xcode Command Line Tools** — only for `--signed` builds (free: `xcode-select --install`)
 - **Apple Developer account** — only for `--signed` builds ($99/year, required for notarization)
 

@@ -8,8 +8,10 @@ on:
 
 jobs:
   build-vm-base:
-    name: Build VM Base Image
+    name: Build & Push VM Builder Image
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -21,35 +23,22 @@ jobs:
         with:
           platforms: arm64
 
-      - name: Build VM base image
-        run: |
-          docker buildx build \
-            --platform linux/arm64 \
-            --load \
-            -t containerfy-builder \
-            vm/
-
-      - name: Extract artifacts from builder
-        run: |
-          # Run the builder to produce artifacts
-          container_id=$(docker run --platform linux/arm64 --privileged -d containerfy-builder)
-          docker wait "$container_id"
-
-          # Copy artifacts out
-          mkdir -p artifacts
-          docker cp "$container_id:/output/vm-root.img.lz4" artifacts/vm-base.img.lz4
-          docker cp "$container_id:/output/vmlinuz-lts" artifacts/vmlinuz-lts
-          docker cp "$container_id:/output/initramfs-lts" artifacts/initramfs-lts
-          docker rm "$container_id"
-
-          ls -lh artifacts/
-
-      - name: Upload VM artifacts
-        uses: actions/upload-artifact@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          name: vm-base-artifacts
-          path: artifacts/
-          retention-days: 1
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push VM builder image
+        uses: docker/build-push-action@v5
+        with:
+          context: vm/
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/containerfy/vm-builder:latest
+            ghcr.io/containerfy/vm-builder:${{ github.ref_name }}
 
   build-swift:
     name: Build Swift Binary
@@ -67,13 +56,51 @@ jobs:
             --force \
             .build/release/Containerfy
 
-      - name: Prepare artifact
+      - name: Download pinned helper binaries
+        run: |
+          PODMAN_VERSION="5.8.0"
+          GVPROXY_VERSION="0.8.8"
+          VFKIT_VERSION="0.6.3"
+
+          mkdir -p helpers
+
+          # podman-remote (shipped as a zip)
+          curl -fSL "https://github.com/containers/podman/releases/download/v${PODMAN_VERSION}/podman-remote-release-darwin_arm64.zip" \
+            -o /tmp/podman.zip
+          unzip -o -q /tmp/podman.zip -d /tmp/podman-extract
+          # Find the podman binary in the extracted zip
+          PODMAN_BIN=$(find /tmp/podman-extract -name podman -type f | head -1)
+          cp "$PODMAN_BIN" helpers/podman
+          chmod +x helpers/podman
+
+          # gvproxy
+          curl -fSL "https://github.com/containers/gvisor-tap-vsock/releases/download/v${GVPROXY_VERSION}/gvproxy-darwin" \
+            -o helpers/gvproxy
+          chmod +x helpers/gvproxy
+
+          # vfkit
+          curl -fSL "https://github.com/crc-org/vfkit/releases/download/v${VFKIT_VERSION}/vfkit-unsigned" \
+            -o helpers/vfkit
+          chmod +x helpers/vfkit
+
+      - name: Prepare artifacts
         run: |
           mkdir -p artifacts
+
+          # Individual binary (backwards compat)
           cp .build/release/Containerfy artifacts/containerfy-darwin-arm64
           chmod +x artifacts/containerfy-darwin-arm64
 
-      - name: Upload Swift binary
+          # Tarball with all binaries
+          mkdir -p tarball/containerfy
+          cp .build/release/Containerfy tarball/containerfy/containerfy
+          cp helpers/podman   tarball/containerfy/podman
+          cp helpers/gvproxy  tarball/containerfy/gvproxy
+          cp helpers/vfkit    tarball/containerfy/vfkit
+          chmod +x tarball/containerfy/*
+          tar -czf artifacts/containerfy-darwin-arm64.tar.gz -C tarball containerfy
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: swift-binary
@@ -89,12 +116,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download VM artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: vm-base-artifacts
-          path: release-assets/
-
       - name: Download Swift binary
         uses: actions/download-artifact@v4
         with:
@@ -109,9 +130,7 @@ jobs:
         with:
           files: |
             release-assets/containerfy-darwin-arm64
-            release-assets/vm-base.img.lz4
-            release-assets/vmlinuz-lts
-            release-assets/initramfs-lts
+            release-assets/containerfy-darwin-arm64.tar.gz
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-') }}

@@ -1,49 +1,64 @@
 import Foundation
 
-struct PersistedState: Codable {
+struct PersistedState: Codable, Equatable {
     let vmState: String
     let timestamp: Date
     let pid: Int32
     let vmStartTime: Date?
 }
 
-enum StateFile {
-    private static let encoder: JSONEncoder = {
+protocol StateFilePersistence {
+    func persist(state: VMState, vmStartTime: Date?)
+    func read() -> PersistedState?
+    func remove()
+    func detectCrash() -> Bool
+}
+
+struct StateFile: StateFilePersistence {
+    let fileURL: URL
+    let currentPID: Int32
+
+    private let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
         e.outputFormatting = .prettyPrinted
         return e
     }()
 
-    private static let decoder: JSONDecoder = {
+    private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .iso8601
         return d
     }()
 
-    static func persist(state: VMState, vmStartTime: Date? = nil) {
+    init(fileURL: URL = Paths.stateFileURL, currentPID: Int32 = ProcessInfo.processInfo.processIdentifier) {
+        self.fileURL = fileURL
+        self.currentPID = currentPID
+    }
+
+    func persist(state: VMState, vmStartTime: Date? = nil) {
         let persisted = PersistedState(
             vmState: state.rawValue,
             timestamp: Date(),
-            pid: ProcessInfo.processInfo.processIdentifier,
+            pid: currentPID,
             vmStartTime: vmStartTime
         )
 
         do {
             let data = try encoder.encode(persisted)
-            try data.write(to: Paths.stateFileURL, options: .atomic)
+            try data.write(to: fileURL, options: .atomic)
         } catch {
             print("[StateFile] Failed to persist state: \(error.localizedDescription)")
         }
     }
 
-    static func read() -> PersistedState? {
-        guard FileManager.default.fileExists(atPath: Paths.stateFileURL.path) else {
+    func read() -> PersistedState? {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return nil
         }
 
         do {
-            let data = try Data(contentsOf: Paths.stateFileURL)
+            let data = try Data(contentsOf: fileURL)
             return try decoder.decode(PersistedState.self, from: data)
         } catch {
             print("[StateFile] Failed to read state: \(error.localizedDescription)")
@@ -51,21 +66,16 @@ enum StateFile {
         }
     }
 
-    static func remove() {
-        try? FileManager.default.removeItem(at: Paths.stateFileURL)
+    func remove() {
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
-    /// Checks if the previous run crashed (state file shows active state but PID is dead).
-    static func detectCrash() -> Bool {
+    func detectCrash() -> Bool {
         guard let persisted = read() else { return false }
 
         let activeStates: Set<String> = [
             VMState.running.rawValue,
-            VMState.startingVM.rawValue,
-            VMState.waitingForHealth.rawValue,
-            VMState.validatingHost.rawValue,
-            VMState.preparingFirstLaunch.rawValue,
-            VMState.paused.rawValue,
+            VMState.starting.rawValue,
         ]
 
         guard activeStates.contains(persisted.vmState) else { return false }
@@ -73,7 +83,6 @@ enum StateFile {
         // Check if the PID from the state file is still alive
         let result = kill(persisted.pid, 0)
         if result == -1 && errno == ESRCH {
-            // Process does not exist — previous run crashed
             print("[StateFile] Detected crash from previous run (PID \(persisted.pid), state: \(persisted.vmState))")
             return true
         }

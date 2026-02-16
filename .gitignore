@@ -15,6 +15,14 @@ DerivedData/
 vmlinuz-*
 initramfs-*
 
+# Secrets / env files
+.env
+.env.*
+*.env
+
+# E2E test output
+e2e/*.app
+
 # IDE
 .vscode/
 .idea/

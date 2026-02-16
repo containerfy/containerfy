@@ -8,19 +8,12 @@ final class MenuBarController: NSObject {
     private let appName: String
 
     private let statusMenuItem: NSMenuItem
-    private let diskWarningMenuItem: NSMenuItem
     private var openMenuItems: [NSMenuItem] = []
     private let viewLogsMenuItem: NSMenuItem
-    private let startMenuItem: NSMenuItem
-    private let stopMenuItem: NSMenuItem
-    private let restartMenuItem: NSMenuItem
     private let launchAtLoginMenuItem: NSMenuItem
     private let removeAppDataMenuItem: NSMenuItem
     private let quitMenuItem: NSMenuItem
 
-    var onStart: (() -> Void)?
-    var onStop: (() -> Void)?
-    var onRestart: (() -> Void)?
     var onQuit: (() -> Void)?
     var onViewLogs: (() -> Void)?
     var onRemoveAppData: (() -> Void)?
@@ -35,18 +28,8 @@ final class MenuBarController: NSObject {
         statusMenuItem = NSMenuItem(title: "Status: Stopped", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
 
-        // Disk warning (hidden by default)
-        diskWarningMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        diskWarningMenuItem.isEnabled = false
-        diskWarningMenuItem.isHidden = true
-
         // View Logs
         viewLogsMenuItem = NSMenuItem(title: "View Logs...", action: nil, keyEquivalent: "l")
-
-        // Start / Stop / Restart
-        startMenuItem = NSMenuItem(title: "Start", action: nil, keyEquivalent: "")
-        stopMenuItem = NSMenuItem(title: "Stop", action: nil, keyEquivalent: "")
-        restartMenuItem = NSMenuItem(title: "Restart", action: nil, keyEquivalent: "")
 
         // Launch at Login
         launchAtLoginMenuItem = NSMenuItem(title: "Launch at Login", action: nil, keyEquivalent: "")
@@ -61,7 +44,6 @@ final class MenuBarController: NSObject {
 
         // Build menu structure
         menu.addItem(statusMenuItem)
-        menu.addItem(diskWarningMenuItem)
         menu.addItem(NSMenuItem.separator())
 
         // Dynamic "Open" items from services with ports
@@ -86,19 +68,6 @@ final class MenuBarController: NSObject {
         viewLogsMenuItem.target = self
         viewLogsMenuItem.action = #selector(viewLogsClicked)
         menu.addItem(viewLogsMenuItem)
-        menu.addItem(NSMenuItem.separator())
-
-        restartMenuItem.target = self
-        restartMenuItem.action = #selector(restartClicked)
-        menu.addItem(restartMenuItem)
-
-        stopMenuItem.target = self
-        stopMenuItem.action = #selector(stopClicked)
-        menu.addItem(stopMenuItem)
-
-        startMenuItem.target = self
-        startMenuItem.action = #selector(startClicked)
-        menu.addItem(startMenuItem)
         menu.addItem(NSMenuItem.separator())
 
         launchAtLoginMenuItem.target = self
@@ -133,73 +102,22 @@ final class MenuBarController: NSObject {
         switch state {
         case .stopped:
             statusMenuItem.title = "Status: Stopped"
-            startMenuItem.isEnabled = true
-            stopMenuItem.isEnabled = false
-            restartMenuItem.isEnabled = false
             setOpenItemsEnabled(false)
             viewLogsMenuItem.isEnabled = false
-            clearDiskWarning()
-        case .validatingHost:
-            statusMenuItem.title = "Status: Validating..."
-            startMenuItem.isEnabled = false
-            stopMenuItem.isEnabled = false
-            restartMenuItem.isEnabled = false
+        case .starting:
+            statusMenuItem.title = "Status: Starting..."
             setOpenItemsEnabled(false)
             viewLogsMenuItem.isEnabled = false
-        case .preparingFirstLaunch:
-            statusMenuItem.title = "Status: Preparing first launch..."
-            startMenuItem.isEnabled = false
-            stopMenuItem.isEnabled = false
-            restartMenuItem.isEnabled = false
-            setOpenItemsEnabled(false)
-            viewLogsMenuItem.isEnabled = false
-        case .startingVM:
-            statusMenuItem.title = "Status: Starting VM..."
-            startMenuItem.isEnabled = false
-            stopMenuItem.isEnabled = true
-            restartMenuItem.isEnabled = false
-            setOpenItemsEnabled(false)
-            viewLogsMenuItem.isEnabled = false
-        case .waitingForHealth:
-            statusMenuItem.title = "Status: Waiting for health..."
-            startMenuItem.isEnabled = false
-            stopMenuItem.isEnabled = true
-            restartMenuItem.isEnabled = false
-            setOpenItemsEnabled(false)
-            viewLogsMenuItem.isEnabled = true
         case .running:
             statusMenuItem.title = "Status: Running"
-            startMenuItem.isEnabled = false
-            stopMenuItem.isEnabled = true
-            restartMenuItem.isEnabled = true
             setOpenItemsEnabled(true)
             viewLogsMenuItem.isEnabled = true
-        case .paused:
-            statusMenuItem.title = "Status: Paused"
-            startMenuItem.isEnabled = false
-            stopMenuItem.isEnabled = true
-            restartMenuItem.isEnabled = false
-            setOpenItemsEnabled(false)
-            viewLogsMenuItem.isEnabled = false
         case .stopping:
             statusMenuItem.title = "Status: Stopping..."
-            startMenuItem.isEnabled = false
-            stopMenuItem.isEnabled = false
-            restartMenuItem.isEnabled = false
-            setOpenItemsEnabled(false)
-            viewLogsMenuItem.isEnabled = false
-        case .destroying:
-            statusMenuItem.title = "Status: Removing VM..."
-            startMenuItem.isEnabled = false
-            stopMenuItem.isEnabled = false
-            restartMenuItem.isEnabled = false
             setOpenItemsEnabled(false)
             viewLogsMenuItem.isEnabled = false
         case .error:
             statusMenuItem.title = "Status: Error"
-            startMenuItem.isEnabled = true
-            stopMenuItem.isEnabled = true
-            restartMenuItem.isEnabled = true
             setOpenItemsEnabled(false)
             viewLogsMenuItem.isEnabled = true
         }
@@ -212,8 +130,6 @@ final class MenuBarController: NSObject {
                 symbolName = "stop.circle"
             case .running:
                 symbolName = "play.circle.fill"
-            case .paused:
-                symbolName = "pause.circle"
             case .error:
                 symbolName = "exclamationmark.triangle"
             default:
@@ -224,22 +140,12 @@ final class MenuBarController: NSObject {
         }
     }
 
-    func showDiskWarning(usedMB: Int, totalMB: Int) {
-        let percent = totalMB > 0 ? Int(Double(usedMB) / Double(totalMB) * 100) : 0
-        diskWarningMenuItem.title = "Disk: \(percent)% used (\(usedMB)/\(totalMB) MB)"
-        diskWarningMenuItem.isHidden = false
-    }
-
     // MARK: - Private Helpers
 
     private func setOpenItemsEnabled(_ enabled: Bool) {
         for item in openMenuItems {
             item.isEnabled = enabled
         }
-    }
-
-    private func clearDiskWarning() {
-        diskWarningMenuItem.isHidden = true
     }
 
     private func updateLaunchAtLoginState() {
@@ -255,18 +161,6 @@ final class MenuBarController: NSObject {
 
     @objc private func viewLogsClicked() {
         onViewLogs?()
-    }
-
-    @objc private func startClicked() {
-        onStart?()
-    }
-
-    @objc private func stopClicked() {
-        onStop?()
-    }
-
-    @objc private func restartClicked() {
-        onRestart?()
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -286,7 +180,7 @@ final class MenuBarController: NSObject {
     @objc private func removeAppDataClicked() {
         let alert = NSAlert()
         alert.messageText = "Remove App Data?"
-        alert.informativeText = "This will stop the VM and delete all application data, including Docker volumes. This cannot be undone."
+        alert.informativeText = "This will stop the VM and delete all application data, including container volumes. This cannot be undone."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Remove")
         alert.addButton(withTitle: "Cancel")

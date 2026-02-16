@@ -5,17 +5,6 @@ import Yams
 struct PortMapping: Sendable {
     let hostPort: UInt16
     let containerPort: UInt16
-
-    /// The vsock data port used to tunnel this mapping. Deterministic: 10000 + hostPort.
-    var vsockPort: UInt32 { UInt32(10000) + UInt32(hostPort) }
-}
-
-/// Health check configuration from `x-containerfy.healthcheck`.
-struct HealthCheckConfig: Sendable {
-    let url: String
-    let intervalSeconds: Int
-    let timeoutSeconds: Int
-    let startupTimeoutSeconds: Int
 }
 
 /// A compose service with exposed ports (generates "Open" menu items).
@@ -34,7 +23,6 @@ struct ServiceInfo: Sendable {
 /// Parsed subset of docker-compose.yml that Containerfy needs at runtime.
 struct ComposeConfig: Sendable {
     let portMappings: [PortMapping]
-    let healthCheck: HealthCheckConfig?
     let displayName: String?
     let services: [ServiceInfo]
 
@@ -53,9 +41,9 @@ struct ComposeConfig: Sendable {
     let composePath: String?
     let composeDir: String?
 
-    /// No compose file found — run with no port forwarding or health monitoring.
+    /// No compose file found — run with no port forwarding.
     static let empty = ComposeConfig(
-        portMappings: [], healthCheck: nil, displayName: nil, services: [],
+        portMappings: [], displayName: nil, services: [],
         name: nil, version: nil, identifier: nil, icon: nil,
         cpuMin: nil, cpuRecommended: nil, memoryMBMin: nil, memoryMBRecommended: nil, diskMB: nil,
         images: [], envFiles: [], composePath: nil, composeDir: nil
@@ -89,15 +77,20 @@ enum ComposeConfigParser {
         }
     }
 
-    /// Runtime parse — extracts ports, healthcheck, displayName. Lenient.
+    /// Runtime parse — extracts ports, displayName, name (for machine naming). Lenient.
     static func parse(yaml: String) throws -> ComposeConfig {
         guard let root = try Yams.load(yaml: yaml) as? [String: Any] else {
             throw ComposeError.invalidFormat
         }
 
         let (portMappings, services) = parseServices(from: root)
-        let healthCheck = parseHealthCheck(from: root)
         let displayName = parseDisplayName(from: root)
+        let xContainerfy = root["x-containerfy"] as? [String: Any]
+        let name = xContainerfy?["name"] as? String
+        let vm = xContainerfy?["vm"] as? [String: Any]
+        let cpuMin = (vm?["cpu"] as? [String: Any])?["min"] as? Int
+        let memoryMBMin = (vm?["memory_mb"] as? [String: Any])?["min"] as? Int
+        let diskMB = vm?["disk_mb"] as? Int
 
         if portMappings.isEmpty {
             print("[Compose] No port mappings found in compose file")
@@ -111,11 +104,10 @@ enum ComposeConfigParser {
 
         return ComposeConfig(
             portMappings: portMappings,
-            healthCheck: healthCheck,
             displayName: displayName,
             services: services,
-            name: nil, version: nil, identifier: nil, icon: nil,
-            cpuMin: nil, cpuRecommended: nil, memoryMBMin: nil, memoryMBRecommended: nil, diskMB: nil,
+            name: name, version: nil, identifier: nil, icon: nil,
+            cpuMin: cpuMin, cpuRecommended: nil, memoryMBMin: memoryMBMin, memoryMBRecommended: nil, diskMB: diskMB,
             images: [], envFiles: [], composePath: nil, composeDir: nil
         )
     }
@@ -187,24 +179,6 @@ enum ComposeConfigParser {
         }
         let (cpuMin, cpuRecommended, memoryMBMin, memoryMBRecommended, diskMB) = try parseVMConfig(vm)
 
-        // healthcheck (required)
-        guard let hc = xContainerfy["healthcheck"] as? [String: Any] else {
-            throw ComposeError.missingField("x-containerfy.healthcheck")
-        }
-        guard let hcURL = hc["url"] as? String, !hcURL.isEmpty else {
-            throw ComposeError.missingField("x-containerfy.healthcheck.url")
-        }
-        if let parsed = URL(string: hcURL), parsed.host != "127.0.0.1" {
-            throw ComposeError.invalidValue("x-containerfy.healthcheck.url", hcURL, "must target 127.0.0.1")
-        }
-
-        let healthCheck = HealthCheckConfig(
-            url: hcURL,
-            intervalSeconds: (hc["interval_seconds"] as? Int) ?? 10,
-            timeoutSeconds: (hc["timeout_seconds"] as? Int) ?? 5,
-            startupTimeoutSeconds: (hc["startup_timeout_seconds"] as? Int) ?? 120
-        )
-
         // Parse services with full validation
         guard let svcs = root["services"] as? [String: Any] else {
             throw ComposeError.missingField("services")
@@ -231,7 +205,7 @@ enum ComposeConfigParser {
                 throw ComposeError.rejected(svcName, "profiles:", "not supported in v1")
             }
             if let nm = svc["network_mode"] as? String, nm == "host" {
-                throw ComposeError.rejected(svcName, "network_mode: host", "breaks vsock port forwarding")
+                throw ComposeError.rejected(svcName, "network_mode: host", "breaks port forwarding")
             }
 
             // Check volumes for bind mounts
@@ -286,20 +260,8 @@ enum ComposeConfigParser {
             throw ComposeError.validationFailed("no services with ports: found — at least one exposed port is required")
         }
 
-        // Cross-validate healthcheck URL port against service ports
-        if let parsed = URL(string: hcURL) {
-            let portStr = parsed.port.map(String.init) ?? "80"
-            guard let hcPort = Int(portStr) else {
-                throw ComposeError.invalidValue("healthcheck URL", portStr, "invalid port")
-            }
-            if !hostPorts.contains(hcPort) {
-                throw ComposeError.validationFailed("healthcheck URL port \(hcPort) does not match any service host port \(hostPorts)")
-            }
-        }
-
         return ComposeConfig(
             portMappings: allMappings,
-            healthCheck: healthCheck,
             displayName: displayName,
             services: serviceInfos,
             name: name,
@@ -486,19 +448,6 @@ enum ComposeConfigParser {
         default:
             return nil
         }
-    }
-
-    private static func parseHealthCheck(from root: [String: Any]) -> HealthCheckConfig? {
-        guard let xContainerfy = root["x-containerfy"] as? [String: Any],
-              let hc = xContainerfy["healthcheck"] as? [String: Any],
-              let url = hc["url"] as? String else { return nil }
-
-        return HealthCheckConfig(
-            url: url,
-            intervalSeconds: (hc["interval_seconds"] as? Int) ?? 10,
-            timeoutSeconds: (hc["timeout_seconds"] as? Int) ?? 5,
-            startupTimeoutSeconds: (hc["startup_timeout_seconds"] as? Int) ?? 120
-        )
     }
 
     private static func parseDisplayName(from root: [String: Any]) -> String? {

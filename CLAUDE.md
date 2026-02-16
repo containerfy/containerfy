@@ -5,23 +5,27 @@ Containerfy packages a Docker Compose application into a native macOS menu bar a
 ## Repo Structure
 
 ```
-ARCHITECTURE.md   — Design decisions, component specs, locked decisions
-README.md         — Public-facing project overview and usage guide
-CLAUDE.md         — This file: project context, expert roles, conventions
-Sources/Containerfy/   — Swift source (19 files: GUI + CLI in one binary)
-vm/               — VM base image build (Dockerfile, rootfs, build-image.sh)
-Resources/        — Entitlements.plist
-Package.swift     — SPM config
-install.sh        — Developer install script (curl | bash)
+ARCHITECTURE.md        — Design decisions, component specs, locked decisions
+README.md              — Public-facing project overview and usage guide
+CLAUDE.md              — This file: project context, expert roles, conventions
+PODMAN-REFERENCE.md    — Reference: how Podman Desktop runs VMs on macOS
+Sources/Containerfy/   — Swift entry point
+Sources/ContainerfyCore/ — Swift source (GUI + CLI in one binary)
+Resources/             — Entitlements.plist
+Package.swift          — SPM config
+bootstrap.sh           — Downloads pinned podman/gvproxy/vfkit to .build/debug/
+install.sh             — Developer install script (curl | bash)
+e2e/                   — End-to-end test (run.sh + docker-compose.yml)
 .github/workflows/release.yml — CI: build + publish releases
 ```
 
 ## Tech Stack
 
-- **macOS app + CLI**: Swift / AppKit (menu bar `NSStatusItem`), Virtualization.framework — single binary serves both roles
-- **VM**: Alpine Linux (aarch64), Docker Engine + Compose v2, shell-based VM agent + socat
-- **Host↔VM**: vsock exclusively (control port 1024, data ports 10XXX)
-- **Build**: VM-based — CLI boots pre-built VM, Docker inside pulls images, creates ext4 (no Docker required on host)
+- **macOS app + CLI**: Swift / AppKit (menu bar `NSStatusItem`) — single binary serves both roles
+- **VM**: Fedora CoreOS (aarch64) via `podman machine` (vfkit + gvproxy under the hood)
+- **Container runtime**: Podman + Compose v2 inside the VM
+- **Networking**: gvproxy (DHCP, DNS, NAT, port forwarding between host and VM)
+- **Build**: `containerfy pack` runs `podman machine init` + `podman compose` to pull images; bundles podman/gvproxy/vfkit in .app
 
 ## Expert Roles
 
@@ -31,7 +35,7 @@ Use these perspectives for multi-angle review of changes:
 |---|---|
 | **PM** | Scope, prioritization, user-facing requirements, milestone tracking |
 | **Swift Dev** | macOS app + CLI: menu bar, VM lifecycle, port forwarding, health checks, Virtualization.framework, `@MainActor` constraints, pack command, compose validation, bundle assembly |
-| **Docker/VM Expert** | Alpine image, Docker Engine config, compose passthrough, VM agent, boot sequence, vsock control protocol |
+| **Podman/VM Expert** | Fedora CoreOS VM, podman machine lifecycle, compose passthrough, gvproxy networking, vfkit hypervisor |
 | **Security/Distribution** | Code signing, notarization, Gatekeeper, entitlements, secrets handling, bundle integrity |
 
 ## Conventions
@@ -40,5 +44,5 @@ Use these perspectives for multi-angle review of changes:
 - Project status tracked in `README.md`
 - Squash commits on main
 - **Develop on macOS** — Swift + Virtualization.framework requires a Mac (no devcontainer)
-- **No Docker required for developers** — VM-based build eliminates Docker Desktop dependency
-- **CI builds VM base image** — developers install binary + base image via `install.sh`
+- **No Docker required for developers** — podman machine eliminates Docker Desktop dependency
+- **Bootstrap helper binaries** — `bootstrap.sh` downloads pinned podman/gvproxy/vfkit to `.build/debug/`

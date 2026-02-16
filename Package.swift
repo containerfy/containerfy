@@ -10,15 +10,23 @@ let package = Package(
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.3"),
     ],
     targets: [
-        .executableTarget(
-            name: "Containerfy",
+        .target(
+            name: "ContainerfyCore",
             dependencies: ["Yams"],
-            path: "Sources/Containerfy",
+            path: "Sources/ContainerfyCore",
             linkerSettings: [
-                .linkedFramework("Virtualization"),
-                .linkedFramework("Network"),
                 .linkedFramework("ServiceManagement"),
             ]
-        )
+        ),
+        .executableTarget(
+            name: "Containerfy",
+            dependencies: ["ContainerfyCore"],
+            path: "Sources/Containerfy"
+        ),
+        .testTarget(
+            name: "ContainerfyTests",
+            dependencies: ["ContainerfyCore", "Yams"],
+            path: "Tests/ContainerfyTests"
+        ),
     ]
 )

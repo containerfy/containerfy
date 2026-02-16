@@ -2,11 +2,27 @@ import Foundation
 
 /// Thin wrapper around Apple's signing + notarization CLI tools.
 ///
-/// Pipeline: resolve identity → sign .app → verify → DMG → sign DMG → notarize → staple.
-enum CodeSigner {
+/// Pipeline: resolve identity -> sign .app -> verify -> DMG -> sign DMG -> notarize -> staple.
+struct CodeSigner {
+
+    let shell: ShellExecutor
+
+    init(shell: ShellExecutor = SystemShellExecutor()) {
+        self.shell = shell
+    }
+
+    enum SigningError: LocalizedError {
+        case failed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .failed(let reason): return reason
+            }
+        }
+    }
 
     /// Full signing + packaging pipeline. Returns path to the notarized DMG.
-    static func signAndPackage(
+    func signAndPackage(
         appPath: String,
         appName: String,
         outputDir: String,
@@ -25,13 +41,13 @@ enum CodeSigner {
             codesignArgs += ["--entitlements", entitlements]
         }
         codesignArgs.append(appPath)
-        let signResult = try run("/usr/bin/codesign", arguments: codesignArgs)
-        guard signResult.exitCode == 0 else { fatal("codesign failed: \(signResult.stderr)") }
+        let signResult = try shell.run(executable: "/usr/bin/codesign", arguments: codesignArgs)
+        guard signResult.exitCode == 0 else { throw SigningError.failed("codesign failed: \(signResult.stderr)") }
 
         // 3. Verify
         onProgress("Verifying signature...")
-        let verifyResult = try run("/usr/bin/codesign", arguments: ["--verify", "--deep", "--strict", appPath])
-        guard verifyResult.exitCode == 0 else { fatal("Verification failed: \(verifyResult.stderr)") }
+        let verifyResult = try shell.run(executable: "/usr/bin/codesign", arguments: ["--verify", "--deep", "--strict", appPath])
+        guard verifyResult.exitCode == 0 else { throw SigningError.failed("Verification failed: \(verifyResult.stderr)") }
 
         // 4. Create DMG
         onProgress("Creating DMG...")
@@ -44,21 +60,21 @@ enum CodeSigner {
 
         let dmgPath = (outputDir as NSString).appendingPathComponent("\(appName).dmg")
         if fm.fileExists(atPath: dmgPath) { try fm.removeItem(atPath: dmgPath) }
-        let dmgResult = try run("/usr/bin/hdiutil", arguments: ["create", "-volname", appName, "-srcfolder", stagingDir, "-ov", "-format", "UDZO", dmgPath])
-        guard dmgResult.exitCode == 0 else { fatal("DMG creation failed: \(dmgResult.stderr)") }
+        let dmgResult = try shell.run(executable: "/usr/bin/hdiutil", arguments: ["create", "-volname", appName, "-srcfolder", stagingDir, "-ov", "-format", "UDZO", dmgPath])
+        guard dmgResult.exitCode == 0 else { throw SigningError.failed("DMG creation failed: \(dmgResult.stderr)") }
 
         // 5. Sign DMG
         onProgress("Signing DMG...")
-        let dmgSignResult = try run("/usr/bin/codesign", arguments: ["--force", "--sign", identity, "--timestamp", dmgPath])
-        guard dmgSignResult.exitCode == 0 else { fatal("DMG signing failed: \(dmgSignResult.stderr)") }
+        let dmgSignResult = try shell.run(executable: "/usr/bin/codesign", arguments: ["--force", "--sign", identity, "--timestamp", dmgPath])
+        guard dmgSignResult.exitCode == 0 else { throw SigningError.failed("DMG signing failed: \(dmgSignResult.stderr)") }
 
         // 6. Notarize
         onProgress("Submitting for notarization (this may take several minutes)...")
-        let notarizeResult = try run("/usr/bin/xcrun", arguments: [
+        let notarizeResult = try shell.run(executable: "/usr/bin/xcrun", arguments: [
             "notarytool", "submit", dmgPath, "--keychain-profile", keychainProfile, "--wait",
         ])
         guard notarizeResult.exitCode == 0 else {
-            fatal("""
+            throw SigningError.failed("""
                 Notarization failed: \(notarizeResult.stderr.isEmpty ? notarizeResult.stdout : notarizeResult.stderr)
                 Set up credentials: xcrun notarytool store-credentials \(keychainProfile)
                 """)
@@ -66,7 +82,7 @@ enum CodeSigner {
 
         // 7. Staple (non-fatal)
         onProgress("Stapling notarization ticket...")
-        let stapleResult = try run("/usr/bin/xcrun", arguments: ["stapler", "staple", dmgPath])
+        let stapleResult = try shell.run(executable: "/usr/bin/xcrun", arguments: ["stapler", "staple", dmgPath])
         if stapleResult.exitCode != 0 {
             printWarning("Stapling failed (Gatekeeper will verify online): \(stapleResult.stderr)")
         }
@@ -75,9 +91,9 @@ enum CodeSigner {
     }
 
     /// Parse `security find-identity` output. Auto-pick if one, prompt if multiple.
-    static func resolveIdentity() throws -> String {
-        let result = try run("/usr/bin/security", arguments: ["find-identity", "-v", "-p", "codesigning"])
-        guard result.exitCode == 0 else { fatal("security find-identity failed: \(result.stderr)") }
+    func resolveIdentity() throws -> String {
+        let result = try shell.run(executable: "/usr/bin/security", arguments: ["find-identity", "-v", "-p", "codesigning"])
+        guard result.exitCode == 0 else { throw SigningError.failed("security find-identity failed: \(result.stderr)") }
 
         let pattern = #"^\s*\d+\)\s+([A-Fa-f0-9]{40})\s+"(.+)"$"#
         let regex = try NSRegularExpression(pattern: pattern, options: .anchorsMatchLines)
@@ -91,7 +107,7 @@ enum CodeSigner {
         }
 
         guard !identities.isEmpty else {
-            fatal("No signing identities found. Install a Developer ID certificate from developer.apple.com")
+            throw SigningError.failed("No signing identities found. Install a Developer ID certificate from developer.apple.com")
         }
         if identities.count == 1 { return identities[0].hash }
 
@@ -110,29 +126,7 @@ enum CodeSigner {
         }
     }
 
-    // MARK: - Helpers
-
-    private static func run(_ executable: String, arguments: [String]) throws -> (stdout: String, stderr: String, exitCode: Int32) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        let stdoutPipe = Pipe(), stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-        try process.run()
-        process.waitUntilExit()
-        let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return (stdout, stderr, process.terminationStatus)
-    }
-
-    private static func fatal(_ message: String) -> Never {
-        var stderr = FileHandle.standardError
-        print("Error: \(message)", to: &stderr)
-        exit(1)
-    }
-
-    private static func printWarning(_ message: String) {
+    private func printWarning(_ message: String) {
         var stderr = FileHandle.standardError
         print("Warning: \(message)", to: &stderr)
     }

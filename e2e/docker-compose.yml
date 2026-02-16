@@ -1,0 +1,15 @@
+x-containerfy:
+  name: "test-app"
+  version: "0.1.0"
+  identifier: "com.containerfy.test-app"
+  vm:
+    cpu:
+      min: 2
+    memory_mb:
+      min: 2048
+    disk_mb: 4096
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "8080:80"

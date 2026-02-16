@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-# Containerfy installer — downloads the latest release binary and VM base image.
+# Containerfy installer — downloads the latest release tarball (containerfy + podman + gvproxy + vfkit).
 #
 # Usage:
 #   curl -fsSL https://containerfy.dev/install.sh | bash
 
 REPO="containerfy/containerfy"
-INSTALL_DIR="/usr/local/bin"
-BASE_DIR="$HOME/.containerfy/base"
+LIB_DIR="/usr/local/lib/containerfy"
+BIN_LINK="/usr/local/bin/containerfy"
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
 error() { printf '\033[1;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
@@ -35,45 +35,58 @@ info "Latest release: $LATEST"
 
 RELEASE_URL="https://github.com/$REPO/releases/download/$LATEST"
 
-# Download binary
-info "Downloading containerfy binary..."
+# Download tarball
+info "Downloading containerfy-darwin-arm64.tar.gz..."
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-curl -fsSL "$RELEASE_URL/containerfy-darwin-arm64" -o "$TMP_DIR/containerfy"
-chmod +x "$TMP_DIR/containerfy"
+curl -fsSL "$RELEASE_URL/containerfy-darwin-arm64.tar.gz" -o "$TMP_DIR/containerfy.tar.gz"
+tar -xzf "$TMP_DIR/containerfy.tar.gz" -C "$TMP_DIR"
 
-# Install binary
-info "Installing to $INSTALL_DIR/containerfy..."
-if [ -w "$INSTALL_DIR" ]; then
-    cp "$TMP_DIR/containerfy" "$INSTALL_DIR/containerfy"
+# Install to /usr/local/lib/containerfy/
+info "Installing to $LIB_DIR/..."
+if [ -w "/usr/local/lib" ] || [ -w "$LIB_DIR" ]; then
+    mkdir -p "$LIB_DIR"
+    cp "$TMP_DIR/containerfy/containerfy" "$LIB_DIR/containerfy"
+    cp "$TMP_DIR/containerfy/podman"      "$LIB_DIR/podman"
+    cp "$TMP_DIR/containerfy/gvproxy"     "$LIB_DIR/gvproxy"
+    cp "$TMP_DIR/containerfy/vfkit"       "$LIB_DIR/vfkit"
+    chmod +x "$LIB_DIR"/*
 else
-    sudo cp "$TMP_DIR/containerfy" "$INSTALL_DIR/containerfy"
+    sudo mkdir -p "$LIB_DIR"
+    sudo cp "$TMP_DIR/containerfy/containerfy" "$LIB_DIR/containerfy"
+    sudo cp "$TMP_DIR/containerfy/podman"      "$LIB_DIR/podman"
+    sudo cp "$TMP_DIR/containerfy/gvproxy"     "$LIB_DIR/gvproxy"
+    sudo cp "$TMP_DIR/containerfy/vfkit"       "$LIB_DIR/vfkit"
+    sudo chmod +x "$LIB_DIR"/*
 fi
 
-# Download VM base artifacts
-info "Downloading VM base image..."
-mkdir -p "$BASE_DIR"
-
-for file in vm-base.img.lz4 vmlinuz-lts initramfs-lts; do
-    info "  Downloading $file..."
-    curl -fsSL "$RELEASE_URL/$file" -o "$BASE_DIR/$file"
-done
+# Create symlink
+info "Creating symlink $BIN_LINK → $LIB_DIR/containerfy..."
+if [ -w "/usr/local/bin" ]; then
+    ln -sf "$LIB_DIR/containerfy" "$BIN_LINK"
+else
+    sudo ln -sf "$LIB_DIR/containerfy" "$BIN_LINK"
+fi
 
 # Verify installation
 info "Verifying installation..."
 if command -v containerfy >/dev/null 2>&1; then
     info "Installation complete!"
     echo ""
-    echo "  Binary:     $INSTALL_DIR/containerfy"
-    echo "  VM base:    $BASE_DIR/"
+    echo "  Binary:     $LIB_DIR/containerfy"
+    echo "  Symlink:    $BIN_LINK"
+    echo "  podman:     $LIB_DIR/podman"
+    echo "  gvproxy:    $LIB_DIR/gvproxy"
+    echo "  vfkit:      $LIB_DIR/vfkit"
     echo ""
     echo "  Usage:      containerfy pack --compose ./docker-compose.yml"
     echo "  Help:       containerfy --help"
     echo ""
 else
     echo ""
-    echo "Binary installed to $INSTALL_DIR/containerfy"
-    echo "Make sure $INSTALL_DIR is in your PATH."
+    echo "Binaries installed to $LIB_DIR/"
+    echo "Symlink created at $BIN_LINK"
+    echo "Make sure /usr/local/bin is in your PATH."
     echo ""
 fi

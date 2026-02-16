@@ -2,68 +2,28 @@ import Foundation
 
 enum VMState: String, Sendable {
     case stopped
-    case validatingHost
-    case preparingFirstLaunch
-    case startingVM
-    case waitingForHealth
+    case starting
     case running
-    case paused
     case stopping
-    case destroying
     case error
 
     func canTransition(to target: VMState) -> Bool {
         switch (self, target) {
-        case (.stopped, .validatingHost),
-             (.stopped, .startingVM),
-             (.stopped, .preparingFirstLaunch),
-             (.stopped, .destroying):
+        case (.stopped, .starting):
             return true
-
-        case (.validatingHost, .preparingFirstLaunch),
-             (.validatingHost, .startingVM),
-             (.validatingHost, .error),
-             (.validatingHost, .stopped):
+        case (.starting, .running),
+             (.starting, .error):
             return true
-
-        case (.preparingFirstLaunch, .startingVM),
-             (.preparingFirstLaunch, .error):
-            return true
-
-        case (.startingVM, .waitingForHealth),
-             (.startingVM, .error):
-            return true
-
-        case (.waitingForHealth, .running),
-             (.waitingForHealth, .error),
-             (.waitingForHealth, .stopping):
-            return true
-
         case (.running, .stopping),
-             (.running, .paused),
              (.running, .error):
             return true
-
-        case (.paused, .running),
-             (.paused, .stopping),
-             (.paused, .error):
-            return true
-
         case (.stopping, .stopped),
              (.stopping, .error):
             return true
-
-        case (.destroying, .stopped),
-             (.destroying, .error):
-            return true
-
-        case (.error, .startingVM),
-             (.error, .validatingHost),
+        case (.error, .starting),
              (.error, .stopping),
-             (.error, .stopped),
-             (.error, .destroying):
+             (.error, .stopped):
             return true
-
         default:
             return false
         }
