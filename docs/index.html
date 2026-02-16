@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Containerfy Docs</title>
+  <meta name="description" content="Containerfy documentation — package Docker Compose apps into native macOS menu bar apps.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
+  <style>
+    :root {
+      --theme-color: #4f46e5;
+      --sidebar-name-color: #4f46e5;
+      --sidebar-name-font-weight: 700;
+      --sidebar-nav-link-color--active: #4f46e5;
+      --sidebar-nav-link-border-color--active: #4f46e5;
+      --link-color: #4f46e5;
+      --link-color--hover: #4338ca;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.$docsify = {
+      name: '<a href="/" style="color:inherit;text-decoration:none">Containerfy</a>',
+      nameLink: false,
+      loadSidebar: true,
+      subMaxLevel: 2,
+      search: {
+        placeholder: 'Search docs',
+        noData: 'No results',
+        depth: 3
+      },
+      markdown: {
+        renderer: {
+          code: function (code, lang) {
+            if (lang === 'mermaid') {
+              return '<div class="mermaid">' + code + '</div>';
+            }
+            return this.origin.code.apply(this, arguments);
+          }
+        }
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({ startOnLoad: false });
+    function renderMermaid() {
+      document.querySelectorAll('.mermaid').forEach(function (el, i) {
+        var id = 'mermaid-' + Date.now() + '-' + i;
+        var source = el.textContent;
+        el.textContent = '';
+        mermaid.render(id, source).then(function (result) {
+          el.innerHTML = result.svg;
+        }).catch(function (e) {
+          console.error('Mermaid render error:', e);
+          el.textContent = source;
+        });
+      });
+    }
+    if (window.$docsify) {
+      window.$docsify.plugins = (window.$docsify.plugins || []).concat(function (hook) {
+        hook.doneEach(renderMermaid);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -5,10 +5,9 @@ Containerfy packages a Docker Compose application into a native macOS menu bar a
 ## Repo Structure
 
 ```
-ARCHITECTURE.md        — Design decisions, component specs, locked decisions
-README.md              — Public-facing project overview and usage guide
+README.md              — Public-facing project overview (slim billboard)
 CLAUDE.md              — This file: project context, expert roles, conventions
-PODMAN-REFERENCE.md    — Reference: how Podman Desktop runs VMs on macOS
+docs/                  — All documentation (getting started, references, architecture, decisions, dev guide)
 Sources/Containerfy/   — Swift entry point
 Sources/ContainerfyCore/ — Swift source (GUI + CLI in one binary)
 Resources/             — Entitlements.plist
@@ -40,8 +39,8 @@ Use these perspectives for multi-angle review of changes:
 
 ## Conventions
 
-- All architecture decisions go in `ARCHITECTURE.md`
-- Project status tracked in `README.md`
+- Architecture decisions go in `docs/decisions.md`
+- Documentation lives in `docs/` — see README.md for the index
 - Squash commits on main
 - **Develop on macOS** — Swift + Virtualization.framework requires a Mac (no devcontainer)
 - **No Docker required for developers** — podman machine eliminates Docker Desktop dependency

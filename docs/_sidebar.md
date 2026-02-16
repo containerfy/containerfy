@@ -1,0 +1,10 @@
+- [Home](/)
+- **Getting Started**
+  - [Getting Started](getting-started.md)
+- **Reference**
+  - [CLI Reference](cli-reference.md)
+  - [Compose Reference](compose-reference.md)
+- **Internals**
+  - [Architecture](architecture.md)
+  - [Decisions](decisions.md)
+  - [Development](development.md)
